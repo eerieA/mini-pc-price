@@ -126,7 +126,7 @@ requirements:                 # fail → penalised, still ranked
 surface_near_misses: true     # digest section for single-requirement failures
 ```
 
-**This is the dial.** If two weeks of data show far more qualifying machines than
+This is the dial. If two weeks of data show far more qualifying machines than
 expected, raise `min` — the bar moves and the digest gets shorter. If almost
 nothing qualifies, lower it, or lower the `else_penalty` so near-misses compete
 more readily. `min` changes what counts as good; `else_penalty` changes how much
@@ -136,13 +136,12 @@ An aggressively discounted machine that caps at 32 GB now lands at `price + 120`
 and competes on the same axis as everything else, instead of vanishing from a
 digest that would never explain why.
 
-> **`else_penalty` is the same species of number as `source_adjustment`** — a
+> `else_penalty` is the same species of number as `source_adjustment` — a
 > subjective dollar figure, not a derived one (see the note below).
 
 ### Then rank by effective cost
 
-The single most valuable change from v1: **score post-upgrade cost, not the
-listing as shipped.**
+Score post-upgrade cost, not the listing as shipped.
 
 ```text
 effective_price = listing_price
@@ -166,9 +165,9 @@ cannot express it, because it scores what the retailer listed. This does.
 covers how much recourse a vendor actually offers if the unit is faulty. Both are
 `0` for vendors with clean warranty and return paths, and both are defined in §3.
 
-> **What the adjustments are, exactly.** They are **subjective dollar penalties —
+> **What the adjustments are, exactly.** They are subjective dollar penalties —
 > what I would pay to avoid dealing with that vendor's failure mode — not
-> expected values.** Some are anchored to a published number (eTek's restocking
+> expected values. Some are anchored to a published number (eTek's restocking
 > fee), some are pure preference (`seller_fulfilled: 50`); once written down they
 > are the same kind of thing and get added together as such. No claim is made
 > that any of them equals probability × cost, and none has been calibrated
@@ -185,7 +184,7 @@ occasionally — they move slowly.
 Ranking by `effective_price` answers "which of these is cheapest." It does not
 answer "is any of them actually a *deal*" — for that the price needs a baseline.
 
-**30-day median of the listing's own history — the weakest, and v1 overrated it.**
+30-day median of the listing's own history — the weakest, and v1 overrated it.
 
 v1 §10 called this "where this gets really powerful." It is the one idea from the
 scoring section worth keeping, but it has two problems, and the second is worse
@@ -203,7 +202,7 @@ than the first:
 Keep recording it — observations are free and cannot be backfilled — but it is a
 tiebreaker, not the signal.
 
-**`compare_at_price` — cheap, weak, and worth capturing from Phase 1.**
+`compare_at_price` — cheap, weak, and worth capturing from Phase 1.
 
 Shopify returns a vendor "was" price per variant, already present in the tier-0
 JSON (§5) and currently unused. Store it and print it.
@@ -295,9 +294,9 @@ sources:
 
 Two distinct problems get confused here, so keep them apart:
 
-- **Is the vendor's pricing worth tracking at all?** A legitimate vendor that is
+- Is the vendor's pricing worth tracking at all? A legitimate vendor that is
   reliably above market is a source that costs maintenance and returns nothing.
-- **What is the risk of buying from them?** That is a cost, and §2 already prices
+- What is the risk of buying from them? That is a cost, and §2 already prices
   costs in dollars.
 
 Only the second is what `source_adjustment` is for. The first is a reason not to
@@ -310,7 +309,7 @@ Every claim below cites a saved transcript in `research/` — see
 
 Uniway was originally picked as a convenient Phase 1 scraping target, not because
 it had been vetted. When it was checked, the evidence said something other than
-expected: **Uniway is legitimate.** Three separate commenters confirm it — real
+expected: Uniway is legitimate. Three separate commenters confirm it — real
 physical stores, a real business, refurb office PCs as the main line.
 
 The consistent complaint is **price**:
@@ -354,7 +353,7 @@ one whose fulfillment appears to have degraded badly sometime after 2017. Earlie
 descriptions of REFURB.io as "legit, just slow" were accurate — about the 2017
 era.
 
-**That is a gate, not an adjustment.** `source_adjustment` prices the risk that a
+That is a gate, not an adjustment. `source_adjustment` prices the risk that a
 unit arrives faulty and the return is painful. It does not price "the order may be
 cancelled after three weeks and the refund may take two more" — no plausible
 dollar figure makes that worth chasing a discount for one purchase.
@@ -382,14 +381,14 @@ containing it — ten units, all CAD, six of them 8th-gen Intel or newer:
 The 7070 Micro at $350 lands near $520 effective once it reaches 64 GB, which is
 competitive with anything else in the plan.
 
-**The reason to prioritise it is structural, not the prices.** It runs Shopify,
+The reason to prioritise it is structural, not the prices. It runs Shopify,
 so `…/products.json?limit=250` returns title, price, `compare_at_price`, SKU and
 an `available` boolean per variant. Verified returning valid JSON for all ten
 products. That eliminates the single largest ongoing failure mode in §8 — silent
 selector breakage — for this source entirely, and it reduces `specs.py` to title
 parsing (§9, Phase 1).
 
-**The return policy is the worst of any vendor kept:**
+The return policy is the worst of any vendor kept:
 
 - 15-day return window
 - **30% restocking fee** on non-defective returns
@@ -403,7 +402,7 @@ because the binding requirements (nested virtualisation, the chassis RAM ceiling
 are only fully verifiable after the box is open. Hence `source_adjustment: 40`
 below, which unlike ITRefurbs' $25 is anchored to a published number.
 
-**Evidence caveat, and it cuts both ways.** eTek has *no Reddit presence* — no
+Evidence caveat, and it cuts both ways. eTek has *no Reddit presence* — no
 thread turned up for either the storefront or the corporate name. The 4.7★ Google
 rating is cited on their own marketing page and could not be independently
 corroborated. So: no complaints found, but also no independent scrutiny found.
@@ -422,7 +421,7 @@ it. The buyer was notably charitable about it —
 
 — and reported no resolution either way. No corroborating account.
 
-**One data point is not a pattern**, and the failure described is slow shipping,
+One data point is not a pattern, and the failure described is slow shipping,
 not a failure to deliver or refund. That is exactly what a dollar adjustment is
 for. Kept, priced, and flagged for re-checking.
 
@@ -479,7 +478,7 @@ the pool.
 > Vendor standing shifts — re-check before a purchase decision rather than
 > trusting a year-old assessment of either kind.
 >
-> **This line of research is closed.** Two searches produced exactly one new
+> This line of research is closed. Two searches produced exactly one new
 > viable name, and the marginal thread is worth less than the marginal listing.
 > Re-open only if a specific vendor becomes load-bearing for a specific decision.
 
@@ -535,7 +534,7 @@ should not be conflated:
 - Best Buy Marketplace is easiest — marketplace items sit on the same product-page
   structure as Best Buy direct, so it rides on the Phase 3 parser for free.
 
-A **product page fetched by URL is far less defended than a search results page.**
+A product page fetched by URL is far less defended than a search results page.
 So: don't out-engineer Amazon's bot defenses to find candidates. Let candidates
 arrive by other means, and point the pipeline at product URLs, where it does the
 part that is genuinely ours — spec parsing, upgrade math, cross-retailer dedup.
@@ -704,7 +703,7 @@ Normalization target (unchanged from v1 §6):
 in §2 cannot work without knowing whether the machine can take more memory. They
 come from the **chassis** table below, not from the listing and not from the CPU.
 
-### Chassis table — the one that actually gates the purchase
+### Chassis table
 
 v1 had no equivalent of this, and it is more important than the CPU table.
 
@@ -820,7 +819,7 @@ v1 §13's three alert tiers are cut. The digest is the only mode.
 
 Ranked by effective price, with the delta shown so the arithmetic is visible.
 
-**The near-miss section is what makes the §2 dial usable.** A count of exclusions
+The near-miss section is what makes the §2 dial usable. A count of exclusions
 tells you nothing about whether the bar is set right; seeing the $300 Beelink
 that failed *only* on RAM ceiling, with its effective price and what it would
 rank if the bar moved, is the information needed to decide. Note that it would
@@ -844,7 +843,7 @@ are different canonical keys and correctly appear as separate entries — dedup
 Instant alerts can be added later if a genuinely time-sensitive deal is ever
 missed.
 
-**The selector-health warning at the bottom is not decoration.** See §8.
+The selector-health warning at the bottom is not decoration. See §8.
 
 ---
 
@@ -883,7 +882,7 @@ entire point. Deployment is a post-purchase problem.
 
 ## 8. Risk the v1 plan didn't name
 
-**Selector breakage is the main ongoing cost, not the domain logic.**
+Selector breakage is the main ongoing cost, not the domain logic.
 
 Retailers restructure pages without warning. A selector that silently returns
 nothing looks exactly like "no new products" — the system goes quiet and appears
@@ -895,8 +894,7 @@ Mitigations, all cheap:
 - Check hourly at most. There is no deal that requires 5-minute polling.
 - Review each retailer's terms before adding it.
 - **Track per-selector health.** If a selector yields nothing for 3 consecutive
-  checks, surface it in the digest (§6). This one feature is worth more than the
-  whole of v1 §9.
+  checks, surface it in the digest (§6).
 - Record `parse_ok` per listing so parser gaps are visible rather than silent.
 - **Never default an unknown chassis** (§5). A missing `chassis.yaml` entry means
   the `ram_max_gb` penalty cannot be computed; assuming 64 GB silently ranks a
@@ -918,7 +916,7 @@ eTek products.json → ChangeDetection → poll.py → SQLite → console
 No email. The bar for done: a source yields listings whose specs parse correctly
 into the schema, and prices accumulate across checks.
 
-**Phase 1 is meant to stand alone, and stopping here is a legitimate outcome.**
+Phase 1 is meant to stand alone, and stopping here is a legitimate outcome.
 eTek's collection is ten listings; once they are parsed into the schema with
 `effective_price` computable by hand from the same numbers, the buying decision
 may simply be answerable by reading the table. Everything from Phase 2 on exists
@@ -974,7 +972,7 @@ the fallback whenever discovery breaks on a source.
 effective-price ranking, the near-miss section, available baseline flags, Gmail
 via app password. Now it is useful.
 
-**The near-miss section (§6) is part of Phase 2, not a later polish.** It is what
+The near-miss section (§6) is part of Phase 2, not a later polish. It is what
 makes `rules.yaml` tunable in practice: without seeing the machines that just
 missed — and what they would rank if the bar moved — adjusting a threshold is
 guesswork. It is also a few lines, since those listings are already scored.
@@ -986,8 +984,8 @@ Add ITRefurbs — the second of the two independent refurbishers that survived t
 cross-vendor comparison starts to matter, so `source_adjustment` needs to be
 applied consistently before these listings compete with each other.
 
-Cross-retailer dedup via `canonical_key` (v1 §11 — the genuinely valuable custom
-piece, kept in full) becomes meaningful with multiple sources:
+Cross-retailer dedup via `canonical_key` (v1 §11, kept in full) becomes
+meaningful with multiple sources:
 
 ```text
               dell:optiplex7070:i5-9500t:16gb:256gb
@@ -1021,7 +1019,7 @@ In rough order of value-per-unit-effort:
    inventory actually lives (§3), and it is the source the refurbisher tier was
    a weak substitute for. Add the seller gates and `fulfillment_adjustment` here.
 
-   **This phase also delivers the reference price (§2)** — the baseline the plan
+   This phase also delivers the reference price (§2) — the baseline the plan
    has wanted since Phase 1 and could not honestly produce. Sold/completed
    listings give what a `canonical_key` actually transacts at, which is the only
    signal that identifies an underpriced machine on its *first* appearance, with
