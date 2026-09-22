@@ -1,0 +1,56 @@
+# Where listings come from (plan.md §3), and what each vendor's risk is worth.
+#
+# Phase 1 is one source. The rest are listed as comments rather than stubs so
+# the §3 decisions are visible to anyone reading the config, not only the plan.
+
+sources:
+  - id: etek
+    name: eTek Laptop (Etek Liquidators Inc., Saint-Laurent QC)
+    type: refurbisher
+    # Shopify tier-0: structured JSON at a stable URL, no selectors to maintain
+    # or silently break (§5, §8).
+    products_json: "https://www.eteklaptop.ca/collections/tiny-computer-and-mini-pcs-usff/products.json?limit=250"
+    product_url_base: "https://www.eteklaptop.ca/products"
+    discovery_urls:
+      - "https://www.eteklaptop.ca/collections/tiny-computer-and-mini-pcs-usff"
+    # No `selectors:` key — the tier-0 JSON path handles this source end to end.
+
+    source_adjustment: 40
+    # Dollars added to effective_price for vendor recourse risk (§2, §3).
+    # Anchored to a published number: a 30% restocking fee on non-defective
+    # returns is ~$105 on a $350 unit, against a 15-day window, customer-paid
+    # return shipping and a 60-day warranty. It is not an expected value and has
+    # not been calibrated — it exists so a genuinely cheap listing can still win,
+    # which a blanket exclusion would not allow, and so the penalty is visible in
+    # the output and editable in one line.
+    #
+    # The number matters here because eTek's binding requirements — nested
+    # virtualisation, the chassis RAM ceiling — are only fully verifiable after
+    # the box is open, which is exactly when the restocking fee applies.
+
+# ── The collection handle IS the selector ────────────────────────────────────
+# Shopify answers a wrong or retired handle with HTTP 200 and {"products": []},
+# which is indistinguishable from a sold-out collection. Tier 0 removes selector
+# breakage but not this. poll.py treats an empty response as a failure, never as
+# zero results (§8).
+#
+# Confirmed 2026-09-22: the handle above returns 10 products. Handles guessed by
+# hand (`mini-pc`, `mini-pcs`, `mini-desktop`) all return 200 with an empty array
+# and are NOT the collection.
+
+# ── Excluded, with reasons (§3) ──────────────────────────────────────────────
+#   uniway    — legitimate business, real storefronts, but consistently marked
+#               up. That is a reason not to track a source at all, and it has
+#               nothing to do with trust.
+#   refurb_io — fulfillment and refund failures reported from 2022 onward.
+#   openbox   — good reputation, but sells zero desktops; consumer returns only.
+#               Excluded on fit, not on conduct.
+#
+# ── Not yet added ────────────────────────────────────────────────────────────
+#   dell_outlet       Phase 3b. The best vendor here to actually buy from —
+#                     manufacturer warranty, clean RMA, source_adjustment 0 —
+#                     but JSON-LD parsing makes it the harder thing to build
+#                     first, and Phase 1 learns nothing that requires it.
+#   itrefurbs         Phase 3, source_adjustment 25 (one report of multi-week
+#                     shipping delays). The first source needing ChangeDetection,
+#                     which is the condition §1 defers the container on.

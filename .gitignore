@@ -3,3 +3,13 @@
 
 # Persisted fetch responses (plan.md §1) — debugging substrate, not source.
 /data/raw/
+
+# data/tracker.db is deliberately NOT ignored — it is the observation log, and
+# it is the one file here that cannot be reconstructed. Re-polling gives today's
+# prices, never last month's (plan.md §1). Committing it is the backup: ~20 KB
+# now, ~7 MB after a year of daily polls, which git handles without complaint.
+# Binary, so `git diff` says nothing useful — read it with SQL, and use git for
+# durability and for the record of when each poll ran.
+
+__pycache__/
+.pytest_cache/

@@ -27,6 +27,11 @@
 # more than a month old is probably low, and low in the direction that makes
 # under-specified machines look better than they are.
 
+priced_on: 2026-09-22
+# Read by report.py for the staleness warning it prints every run (§9). The date
+# is in the prose above too; this is the machine-readable copy, and the two must
+# move together.
+
 ram:
   # DDR4 SODIMM covers every Tiny/Mini/Micro chassis. SFF machines are in scope
   # (plan.md §3) and take full-size DDR4 UDIMMs instead — a different part at a

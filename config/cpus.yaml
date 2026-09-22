@@ -1,0 +1,57 @@
+# CPU specs (plan.md §5). Core count for the cpu_cores requirement, nested_virt
+# for the gate.
+#
+# Populated on demand, like chassis.yaml: one entry per CPU that appears in
+# tracked inventory. A listing whose CPU is absent is parse_ok = false and
+# surfaces for a manual lookup — it is never defaulted. Expand the table when
+# that happens, not in anticipation.
+#
+# The useful finding about this table is that it mostly does NOT gate: every
+# chip below has nested_virt true, as does essentially everything Intel 8th-gen
+# and later or Zen 2+. nested_virt is kept for the exceptions that would
+# otherwise pass silently — Celeron/Pentium/Atom-based mini PCs, which do appear
+# in this segment. The chassis RAM ceiling does the real excluding.
+#
+# Values are Intel ARK specifications. "T" is the 35 W low-power desktop part
+# that ships in Tiny/Micro/Mini chassis.
+
+# ── 4th gen, Haswell (DDR3 era) ──────────────────────────────────────────────
+i5-4570T:  {cores: 2, threads: 4,  gen: 4,  tdp: 35, nested_virt: true}
+# TWO cores, not four, despite the i5 badge — Haswell i5 desktop chips are
+# normally 4c/4t and this low-power variant is the exception. Verified
+# 2026-09-22 against Intel ARK; worth the note because reading "i5" as "4 cores"
+# is the obvious mistake and would overstate cpu_cores by a factor of two. It
+# does not change the outcome for the M73 listing, which misses cpu_cores either
+# way, but it would on a closer machine.
+# https://www.intel.com/content/www/us/en/products/sku/75045/intel-core-i54570t-processor-4m-cache-up-to-3-60-ghz/specifications.html
+i5-4590T:  {cores: 4, threads: 4,  gen: 4,  tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/78928/intel-core-i54590t-processor-6m-cache-up-to-3-00-ghz/specifications.html
+
+# ── 6th gen, Skylake ─────────────────────────────────────────────────────────
+i5-6500T:  {cores: 4, threads: 4,  gen: 6,  tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/88183/intel-core-i56500t-processor-6m-cache-up-to-3-10-ghz/specifications.html
+# This is the chip that disqualifies the ProDesk 600 G3 SFF — the only chassis
+# in the collection reaching 64 GB on four DIMM sockets, paired with a 4-core
+# CPU. Chassis capability and listing configuration are different things.
+
+# ── 8th gen, Coffee Lake ─────────────────────────────────────────────────────
+i5-8500:   {cores: 6, threads: 6,  gen: 8,  tdp: 65, nested_virt: true}
+# No T suffix, and that is not a typo in this file: eTek's OptiPlex 5060 listing
+# says "core i5-8500", a 65 W part that ships in the SFF rather than the 35 W
+# T-series a Micro takes. The listing was resolved by hand as a 5060 Micro on
+# its video ports (chassis.yaml), so either the title is loose or the machine is
+# unusual. Recorded as written rather than silently "corrected" to i5-8500T:
+# teaching the parser to rewrite CPU names is a road with no end, and the core
+# count and nested_virt are identical either way, so the ranking does not move.
+i7-8700T:  {cores: 6, threads: 12, gen: 8,  tdp: 35, nested_virt: true}
+
+# ── 9th gen, Coffee Lake Refresh ─────────────────────────────────────────────
+i5-9500T:  {cores: 6, threads: 6,  gen: 9,  tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/191052/intel-core-i59500t-processor-9m-cache-up-to-3-70-ghz/specifications.html
+# Three of eTek's ten listings use this chip.
+
+# ── 10th gen, Comet Lake ─────────────────────────────────────────────────────
+i5-10500T: {cores: 6, threads: 12, gen: 10, tdp: 35, nested_virt: true}
+# Corroborated by the vendor's own description, which states 6 cores / 12
+# threads and Intel UHD 630 — the detail that helped confirm those listings are
+# 3080 Micros rather than the "Ultra" their titles claim (chassis.yaml).

@@ -200,7 +200,7 @@ nothing qualifies, lower it, or lower the `else_penalty` so near-misses compete
 more readily. `min` changes what counts as good; `else_penalty` changes how much
 the shortfall costs. Both are one-line edits in config, and neither touches code.
 
-An aggressively discounted machine that caps at 32 GB now lands at `price + 120`
+An aggressively discounted machine that caps at 32 GB now lands at `price + 325`
 and competes on the same axis as everything else, instead of vanishing from a
 digest that would never explain why.
 
@@ -480,16 +480,22 @@ containing it — ten units, all CAD, six of them 8th-gen Intel or newer:
 | Dell OptiPlex 3070 Micro | i5-9500T | 16 GB | $349.99 |
 | Dell OptiPlex 7070 Micro | i5-9500T | 16 GB | $349.99 |
 | HP EliteDesk 800 G4 Mini | i7-8700T | 16 GB | $424.99 |
-| Dell OptiPlex 3080 Ultra | i5-10500T | 16 GB | $429.99 |
-| Dell OptiPlex 3080 Ultra | i5-10500T | 32 GB | $549.99 |
+| Dell OptiPlex 3080 "Ultra" * | i5-10500T | 16 GB | $429.99 |
+| Dell OptiPlex 3080 "Ultra" * | i5-10500T | 32 GB | $549.99 |
+
+\* eTek's title, and it is wrong: both listings describe an OptiPlex 3080
+**Micro** throughout their product descriptions, and their URLs say `3090`. The
+Micro is a 2-slot, 32 GB chassis, so these rank as near-misses rather than as the
+qualifiers an earlier draft took them for (§5, §10). The titles are reproduced
+here as the vendor writes them because that is what the parser receives.
 
 That table omits three older chassis in the same collection — the Lenovo M73
 Tiny, the OptiPlex 9020 Tiny and the ProDesk 600 G3 SFF — which is where the
 16 GB ceiling bites hardest. The 600 G3 is the interesting one: its chassis is
 the only 4-socket machine here and reaches 64 GB, but the unit eTek is selling
-has a 4-core i5-6500T and no NVMe, so it misses on two other requirements and
-ranks last (§9). Chassis capability and listing configuration are different
-things, and this is the listing that separates them.
+has a 4-core i5-6500T, so it misses on cores and ranks last (§9). Chassis
+capability and listing configuration are different things, and this is the
+listing that separates them.
 
 An earlier draft of this line said the 7070 Micro "lands near $520 effective once
 it reaches 64 GB." It does not: the 7070 caps at 32 GB officially (§5), so it
@@ -768,6 +774,21 @@ in_stock
 change it — it is a property of the offer at a moment, like the price itself. It
 is null for any source that does not publish one, which is most of them.
 
+`observations` is where price history lives, and comparing two dates is a query
+rather than a feature:
+
+```sql
+SELECT o.observed_at, o.price, o.compare_at_price
+FROM observations o JOIN listings l ON l.id = o.listing_id
+WHERE l.url = ?
+ORDER BY o.observed_at;
+```
+
+That is the whole mechanism. Nothing else needs building to answer "what did this
+cost last Monday" — which is the point of writing a row on every run rather than
+only when something changes. The file holding this is committed for the same
+reason (§7).
+
 A `reference_prices` table (street price per `canonical_key`, §2) arrives with
 eBay in Phase 4. It is deliberately not here: nothing before Phase 4 can populate
 it honestly, and an empty table invites filling it with guesses.
@@ -808,6 +829,24 @@ because it is not a fallback for the others but a check to run first:
 3. **Regex fallback** over the title/description — `32GB DDR4 512GB NVMe` and its
    many spellings.
 4. **LLM** — only on repeated failure, and not in v1.
+
+**A tier-0 source is structured, not complete.** eTek's JSON is clean and stable,
+and it still does not contain a storage interface: across all ten listings,
+`NVMe`, `M.2`, `SATA` and `PCIe` appear zero times in the titles *and* zero times
+in the descriptions. Every machine is "120GB SSD" or "256 SSD" — often without
+the `GB`. So `storage_type` is parsed as `ssd` and the `storage_nvme` requirement
+is **not met**, which costs `else_penalty: 40` and prints as `nvme unknown`.
+
+It is tempting to recover the missing field from `chassis.yaml` — if the chassis
+has an NVMe slot, assume the drive is NVMe. Don't. That asserts a fact about the
+unit for sale from a fact about the model, which is the same conflation that once
+had this plan calling a 4-core machine with no NVMe "the cheapest route to 64 GB"
+(§3). The chassis says what the box *could* take; only the listing says what is
+in it, and here the listing declines to say.
+
+Note this is a requirement miss, not a parse failure: `parse_ok` stays true. A
+listing held out of the ranking is invisible, and holding out every listing
+because the vendor is vague would print an empty report rather than an honest one.
 
 Normalization target (unchanged from v1 §6):
 
@@ -852,14 +891,19 @@ as though it could reach 64 GB. That is a silent pricing error, not a loud one.
 # config/chassis.yaml — shape only; the real file carries a source comment per entry
 dell-optiplex-3070-micro: {ram_slots: 2, ram_max_gb: 32, m2_nvme_slots: 1, sata: true}
 dell-optiplex-7070-micro: {ram_slots: 2, ram_max_gb: 32, m2_nvme_slots: 1, sata: true}
-dell-optiplex-3080-ultra: {ram_slots: 2, ram_max_gb: 64, m2_nvme_slots: 1, sata: true}
+dell-optiplex-3080-micro: {ram_slots: 2, ram_max_gb: 64, m2_nvme_slots: 1, sata: true}
 hp-elitedesk-800-g4-mini: {ram_slots: 2, ram_max_gb: 32, m2_nvme_slots: 2, sata: true}
 lenovo-m73-tiny:          {ram_slots: 2, ram_max_gb: 16, m2_nvme_slots: 0, sata: true}
 # ...one entry per model that actually appears in the tracked inventory
 ```
 
-Keyed by `brand:model` — the same thing `canonical_key` (§4) already derives, so
-the lookup is free once the title parses. `m2_nvme_slots` feeds the NVMe hard
+Keyed by `brand-model-formfactor`. An earlier draft called this "the same thing
+`canonical_key` (§4) already derives, so the lookup is free once the title
+parses." It is not: `canonical_key` is `dell:optiplex3070:i5-9500t:16gb:256gb`,
+while a chassis key carries a form-factor segment (`-micro`) that `canonical_key`
+has no way to produce and the listing title cannot be trusted to supply — see
+"Resolving a title to a chassis key" below. They are two keys built
+independently. `m2_nvme_slots` feeds the NVMe hard
 requirement and the `cost_to_reach(NVMe)` term in the same way. It counts M.2
 sockets that will actually take an NVMe drive, which is not the same as counting
 M.2 connectors: a B-key socket may be SATA-only, and the 2230 Wi-Fi socket never
@@ -868,7 +912,9 @@ counts. Both distinctions cost real entries during the first population.
 The values above are the verified ones, and they make a point this section
 originally got wrong. A draft of this table assumed 64 GB was the norm from 8th
 gen onward. It is not: of the nine chassis in eTek's inventory, **two** reach
-64 GB officially. Dell and HP specify the 8th/9th-gen Micro/Mini machines at
+64 GB officially — the 600 G3 SFF on four full-size DIMM sockets, and the 3080
+Micro on two 32 GB SODIMMs. Dell and HP specify the 8th/9th-gen Micro/Mini
+machines at
 32 GB — 16 GB per slot — and several are reported running 2 × 32 GB anyway, but
 an unofficial ceiling is by construction the one figure that cannot be verified
 from vendor documentation, so it stays in a comment rather than a field. The
@@ -889,6 +935,55 @@ Two rules keep it small and honest:
 Values come from the vendor's own spec sheet or PSREF/QuickSpecs, and each entry
 is worth a one-line source comment — this is the table where being wrong costs
 money rather than a bad ranking.
+
+### Resolving a title to a chassis key
+
+The table above is only useful if a listing can be mapped onto it, and the first
+attempt at that — read the brand, the model and the form factor out of the title
+— does not survive real data.
+
+**The form factor cannot be parsed from this vendor's text.** Checked against
+eTek's ten listings: the 9020's description contains `tiny`, `micro`, `sff`,
+`usff`, `ultra` *and* `small form factor`, all six, for one machine. The 3070's
+title says `Mini` where its chassis key says `-micro`, and its body says `tiny`.
+The words are marketing boilerplate pasted between listings, not a specification.
+
+**Brand plus model number is clean.** The same ten listings yield `m73`, `9020`,
+`600 g3`, `5060`, `400 g5`, `3070`, `7070`, `800 g4`, `3080` — nine values, nine
+chassis, no collisions. So resolution is a small alias table in
+`config/chassis_aliases.yaml` mapping `(brand, model_number)` to a chassis key,
+with the form-factor segment supplied by whoever adds the entry, from vendor
+documentation, rather than parsed from prose:
+
+```yaml
+# config/chassis_aliases.yaml — this vendor's naming, not hardware facts
+dell:
+  "3070": dell-optiplex-3070-micro
+  "3080": dell-optiplex-3080-micro
+```
+
+It is a separate file from `chassis.yaml` deliberately: that file records
+hardware with a vendor citation per entry, this one records how one retailer
+spells things. Mixing them would put an eTek quirk inside a Dell fact.
+
+Two details the real data forced:
+
+- **Strip the CPU token before matching the model number**, or the OptiPlex 5060
+  listing's `i5-8500` reads as a second model number.
+- **Never read the Shopify `handle`.** Both 3080 listings have handles saying
+  `3090`, and the 9020's handle says `dell-optiplex-3070-...-copy` — it was
+  duplicated from another product and never renamed. The handle is still the
+  right unique key for a listing; it is not evidence about the hardware.
+
+This approach resolves 10/10 and is unaffected by eTek spelling the product
+`Optiflex`, because neither the brand nor the model number depends on the product
+name being spelled correctly. It follows the convention this table already
+adopted: identify a chassis by something a vendor document can refute, not by
+prose that "is boilerplate and was wrong about the model number."
+
+A `(brand, model_number)` pair absent from the alias table is `parse_ok = false`
+and is held out of the ranking — the same rule as a missing chassis entry, for
+the same reason.
 
 ### CPU table
 
@@ -925,26 +1020,28 @@ v1 §13's three alert tiers are cut. The digest is the only mode.
 ```text
 🖥️  Mini-PC Digest — Sep 21
 
-  $915 eff.  Dell OptiPlex 3080 Ultra eTek        $550 + $325 RAM + $40 source
-             i5-10500T / 32→64GB / 256GB NVMe
-             ▸ ships with 32GB — one SODIMM to source, not two
-             60d warranty, 30% restocking fee on non-defective returns
+  (no listing meets every requirement)
 
-  $965 eff.  HP ProDesk 600 G3 SFF   eTek         $225 + $700 RAM + $40 source
-             i5-6500T / 16→64GB / 120GB SSD   (4 × DIMM, 2 kits)
+  ── near misses ────────────────────────
+  $625 eff.  Lenovo M73 Tiny         eTek         $140 + $325 ram_max + $80 + $40
+             i5-4570T / 16GB max / 120GB SSD
+             ✗ ram_max_gb 16 < 64   ✗ cores 4 < 6   ✗ nvme unstated
 
-  $1120 eff. Dell OptiPlex 3080 Ultra eTek        $430 + $650 RAM + $40 source
-             i5-10500T / 16→64GB / 256GB NVMe
-
-  ── near misses (1 requirement short) ──
-  $665 eff.  Dell OptiPlex 5060      eTek         $300 + $325 ram_max 32GB + $40
-             i5-8500T / 32GB max / 256GB NVMe
+  $705 eff.  Dell OptiPlex 5060      eTek         $300 + $325 ram_max 32GB + $40
+             i5-8500 / 32GB max / 256GB SSD
              ✗ ram_max_gb 32 < 64      (lower the bar → ranks 1st)
+             ✗ nvme unstated
              ~street $340 (eBay sold, n=14)
 
-  $690 eff.  HP ProDesk 400 G5 Mini  eTek         $325 + $325 ram_max 32GB + $40
-             i5-9500T / 32GB max / 240GB NVMe
-             ✗ ram_max_gb 32 < 64
+  $955 eff.  Dell OptiPlex 3080 Micro eTek        $550 + $325 RAM + $40 + $40
+             i5-10500T / 32→64GB / 256GB SSD
+             ▸ ships with 32GB — one SODIMM to source, not two
+             ✗ nvme unstated      ← the only miss
+             60d warranty, 30% restocking fee on non-defective returns
+
+  $1085 eff. HP ProDesk 600 G3 SFF   eTek         $225 + $700 RAM + $80 + $40
+             i5-6500T / 16→64GB / 120GB SSD   (4 × DIMM, 2 kits)
+             ✗ cores 4 < 6   ✗ nvme unstated
 
   ── excluded (12) ──────────────────────
   2 no nested virt (gate)
@@ -958,11 +1055,12 @@ v1 §13's three alert tiers are cut. The digest is the only mode.
 Ranked by effective price, with the delta shown so the arithmetic is visible.
 
 The near-miss section is what makes the §2 dial usable. A count of exclusions
-tells you nothing about whether the bar is set right; seeing the $300 Beelink
-that failed *only* on RAM ceiling, with its effective price and what it would
-rank if the bar moved, is the information needed to decide. Note that it would
-rank first at $420 — the line shows exactly what the current setting is costing,
-so tuning is a judgement about a real machine rather than a guess at a threshold.
+tells you nothing about whether the bar is set right; seeing the $300 OptiPlex
+5060 that failed *only* on RAM ceiling, with its effective price and what it
+would rank if the bar moved, is the information needed to decide. The
+`(lower the bar → ranks 1st)` annotation shows exactly what the current setting
+is costing, so tuning is a judgement about a real machine rather than a guess at
+a threshold.
 
 Note also the `~street` line: a reference price from eBay sold listings, with
 `n=14` shown so a thin sample is visible as such. That is the strongest of the
@@ -971,26 +1069,36 @@ flag — the digest never presents a flag without saying where it came from,
 because they differ by an order of magnitude in how much they mean.
 
 The `▸ ships with 32GB` marker is `prefer_shipped_ram_gb` (§2). It carries no
-dollars and does not move the ranking; here it explains why a $550 listing beats
-a $225 one — the dearer machine needs one SODIMM, the cheaper needs four DIMMs,
-and at 2026 prices that is the entire difference.
+dollars and does not move the ranking; here it marks the one machine in the
+collection whose memory is already installed rather than waiting to be sourced
+from an end-of-life supply.
 
-Two things in this mock are worth reading as warnings rather than targets.
+Three things in this mock are worth reading as warnings rather than targets.
 
 First, the ranking is now substantially a ranking of *RAM requirements*. A $225
-computer carrying $700 of memory places second. An earlier version of this
+computer carrying $700 of memory places last. An earlier version of this
 digest showed these machines around $450–480 with `$60 RAM`; that is what a
 fivefold move in one input does to a model that adds real component costs. The
 model is behaving correctly and the market moved underneath it.
 
-Second, and more dangerous: **every near-miss is cheaper than every qualifier.**
-The $665 5060 undercuts the cheapest machine that actually reaches 64 GB by
-$250, and all seven capped machines in eTek's inventory rank below all three
-qualifying ones. That is the flat-`else_penalty` distortion described in §2, and
-it is why the near-miss section is a separate block rather than a tail of the
-main list. Read as one ranking these numbers say "buy the 5060"; read correctly
-they say "the cheapest machine that can do the job is $915, and here is what you
-would save by giving up on 64 GB."
+Second, **this digest has no qualifying section at all.** Ranking eTek's real
+inventory produces ten near-misses and nothing else, and every one of them misses
+the same field: no listing states a storage interface, so `storage_nvme` is unmet
+across the board (§5). An earlier draft of this mock showed three qualifiers,
+which was an artifact of checking the RAM ceiling by hand and assuming the rest.
+The digest has to read well when the top section is empty, because on real data
+that is the case it is in — and note the shape of the result it produces here,
+which is better than "nothing qualifies": one unanswered question separates the
+$550 machine from a clean pass, and the digest says which question.
+
+Third, and the reason the sections are separate blocks: **the flat-`else_penalty`
+distortion described in §2 still applies whenever a qualifier does appear.** At
+325 against ~$650–700 of real memory, a capped machine will undercut a capable
+one, so a single sorted list would read as "buy the cheapest" and recommend a box
+that cannot host the lab. Here that failure mode is total rather than partial —
+read as one ranking, this digest says "buy the $140 M73", which is a 4-core,
+16 GB-max machine from 2013.
+
 Instant alerts can be added later if a genuinely time-sensitive deal is ever
 missed.
 
@@ -1037,7 +1145,24 @@ when the second consumer exists, not in anticipation of it.
 
 `data/raw/` is not a cache and nothing reads it in the normal path. It exists so
 a parser bug found on day 10 can be fixed against day 1's bytes without re-
-fetching, and it is git-ignored.
+fetching, and it is git-ignored — at ~50 KB per fetch it is the bulky part, and
+losing it costs a debugging convenience rather than data.
+
+**`data/tracker.db` is committed, and it is the exception to the usual rule
+against versioning build output.** It is not build output: it is the observation
+log, and it is the only file in the project that cannot be reconstructed. Re-
+running `poll.py` produces today's prices, never last month's — the asymmetry
+§1 is built around. Committing it is the backup, and it costs little (~20 KB per
+10 listings; roughly 7 MB after a year of daily polls).
+
+Two consequences worth stating, because a committed binary is unusual:
+
+- `git diff` says nothing readable about it. That is fine — the file is queried
+  with SQL, and git is carrying durability and a record of when each poll ran,
+  not reviewability.
+- A poll run makes the working tree dirty. Committing the result is part of
+  polling, not a separate chore; a run whose observations are never committed is
+  a run whose history exists only on one disk.
 
 **Run it on the desktop, not on Proxmox.** v1 §19 pictures the finished system
 running on the mini PC — but the mini PC hasn't been bought yet; finding it is the
@@ -1139,47 +1264,76 @@ digest implementation: it prints the same ranking §6 describes, minus the email
 the baselines that need history, and the multi-source sections.
 
 ```text
-eTek  ·  10 listings  ·  fetched 2026-09-22 14:05  ·  parse_ok 10/10
+eTek | 10 listings | fetched 2026-09-22 14:05 | parse_ok 10/10
 rules.yaml: ram>=64GB(325) cores>=6(80) nvme(40) | parts: SODIMM32 $325
 ==============================================================================
-QUALIFIES — meets every requirement (2)
+QUALIFIES - meets every requirement (0)
 ------------------------------------------------------------------------------
-  $795     Dell OptiPlex 3080 Ultra   $429.99 list  + 325 RAM  + 40 src
-           i5-10500T / 6c / 16->64GB / 256GB NVMe
-  $915     Dell OptiPlex 3080 Ultra   $549.99 list  + 325 RAM  + 40 src
-           i5-10500T / 6c / 32->64GB / 256GB NVMe *ships 32GB
+  (none)
 
-NEAR MISSES — 1+ requirement short (8)
+NEAR MISSES - 1+ requirement short (10)
 ------------------------------------------------------------------------------
-  $665     Dell OptiPlex 5060 Micro   $299.99 list  + 325 pen  + 40 src
-           i5-8500T / 6c / 16GB / 256GB NVMe   x ram_max 32GB<64
+  $624.99  Lenovo M73 Tiny            $139.99 list  + 325 pen + 80 pen
+           i5-4570T / 4c / 8GB / 120GB SSD       + 40 pen + 40 src
+           x ram_max 16GB<64, cores 4<6, nvme unknown
+  $704.99  Dell OptiPlex 5060 Micro   $299.99 list  + 325 pen + 40 pen + 40 src
+           i5-8500 / 6c / 16GB / 256GB SSD
+           x ram_max 32GB<64, nvme unknown
   ...
-  $1085    HP ProDesk 600 G3 SFF      $224.99 list  + 120 pen  + 40 src
-           i5-6500T / 4c / 16GB / 120GB   x cores 4<6, no NVMe
+  $954.99  Dell OptiPlex 3080 Micro   $549.99 list  + 325 RAM + 40 pen + 40 src
+           i5-10500T / 6c / 32->64GB / 256GB SSD *ships 32GB
+           x nvme unknown
+  $1084.99 HP ProDesk 600 G3 SFF      $224.99 list  + 700 RAM + 80 pen + 40 src
+           i5-6500T / 4c / 16->64GB / 120GB SSD  (4 x DIMM, 2 kits)
+           x cores 4<6, nvme unknown
+  $1159.99 Dell OptiPlex 3080 Micro   $429.99 list  + 650 RAM + 40 pen + 40 src
+           i5-10500T / 6c / 16->64GB / 256GB SSD
+           x nvme unknown
 ==============================================================================
-cheapest qualifier $795 | cheapest near-miss $665 | gap $130
+cheapest qualifier: none | cheapest near-miss $624.99
+closest to qualifying: $954.99 3080 Micro - misses only on nvme unknown
 * = ships >=32GB (prefer_shipped_ram_gb) - no EOL DDR4 to source
 
 warnings
 ------------------------------------------------------------------------------
-  ! dell-optiplex-3080-ultra  chassis INFERRED from 3080 Micro - and it
-    is the cheapest qualifier. Confirm before buying.
+  ! no listing meets every requirement, and all 10 miss on the same field:
+    storage interface is unstated across every title and description -
+    vendor says only "SSD". Every listing pays nvme(40); none is confirmed
+    NVMe. Two listings miss on nothing else.
   ! parts.yaml priced 2026-09-22; DDR4 is EOL and rising 10-20%/mo.
 ```
+
+This is the real output, not a sketch — it was produced by ranking eTek's actual
+ten listings, and two things in it are worth stating plainly because an earlier
+draft of this section got both wrong.
+
+**Nothing qualifies, and everything fails on the same field.** All ten listings
+miss `storage_nvme` because eTek never states a storage interface (§5). Two of
+them — the 3080 Micros — miss on *nothing else*. So the honest reading is not
+"this collection is useless" but something more specific and more actionable:
+one question, answerable by asking the vendor or reading a photo of the drive,
+stands between the $549.99 machine and a clean pass. That is a *useful* Phase 1
+result, and it is the kind that only appears once every requirement is checked
+by code rather than by eye.
+
+**An empty qualifier section is a normal state, not an error**, and the format
+has to hold up in it. Hence `(none)` rather than a missing heading, and
+`cheapest qualifier: none` rather than a `gap` line with nothing to subtract.
 
 Five properties, each with a reason:
 
 - **Two sections, never one list.** Qualifiers and near-misses are separated
   because at `else_penalty: 325` every near-miss undercuts every qualifier (§2),
   so a single sorted list reads as "buy the cheapest" and recommends a machine
-  that cannot host the lab. The `gap` line states that trade explicitly rather
-  than leaving it to be inferred from the ordering.
-- **The arithmetic is shown, not the result.** `$429.99 list + 325 RAM + 40 src`
+  that cannot host the lab. The `cheapest qualifier` line states that trade
+  explicitly rather than leaving it to be inferred from the ordering — and on
+  this inventory it says `none`, which a single sorted list would have buried.
+- **The arithmetic is shown, not the result.** `$224.99 list + 700 RAM + 80 pen`
   is the whole argument for a number that would otherwise be unfalsifiable. Every
   figure in it traces to a line in `rules.yaml` or `parts.yaml`, and the header
   echoes those settings so the output is self-contained — a printout from last
   week can be read without guessing which thresholds produced it.
-- **Misses are named individually.** `x cores 4<6, no NVMe` rather than a total.
+- **Misses are named individually.** `x cores 4<6, nvme unknown` rather than a total.
   The §2 dial is tuned by seeing *which* requirement is doing the excluding, and
   a machine short on three counts is a different proposition from one short on
   RAM ceiling alone.
@@ -1188,11 +1342,13 @@ Five properties, each with a reason:
   indistinguishable from one the parser lost. `parse_ok n/10` in the header is
   the check; anything with `parse_ok = false` prints in the warnings block with
   its raw title, since that is the failure Phase 1 exists to surface.
-- **Warnings are not decoration.** Inferred chassis entries, unknown chassis and
-  stale `parts.yaml` dates print at the bottom every run. The first warning above
-  is the real case: the cheapest qualifying machine depends on a chassis entry
-  inferred from a different model (`chassis.yaml`), and that belongs on screen
-  next to the recommendation rather than in a file nobody opens before paying.
+- **Warnings are not decoration.** Unknown chassis, unparseable fields and stale
+  `parts.yaml` dates print at the bottom every run. The warnings above are the
+  real case, and note what they are doing: the first says the run produced no
+  buyable machine, and the second says a whole requirement is being charged on
+  every listing because the vendor never states the field. Both are conclusions a
+  reader would otherwise have to reconstruct from the ranking, and both belong on
+  screen rather than in a file nobody opens before paying.
 
 **ASCII only, and this is a constraint rather than a preference.** Windows
 consoles default to cp1252, where printing `✗`, `▸`, `↓` or `⚠` raises
@@ -1202,11 +1358,17 @@ vendor JSON: open it with an explicit `encoding='utf-8'` or listing titles with
 typographic punctuation will fail on the way in.
 
 Writing this output against the real ten listings is also the cheapest possible
-test of §2 and `chassis.yaml`, and it earned its keep immediately: it showed the
-ProDesk 600 G3 SFF — which §3 and `chassis.yaml` both discuss as the cheap route
-to 64 GB — is a 4-core machine with no NVMe, so it fails two *other* requirements
-and never qualifies at all. That was invisible while the RAM ceiling was the only
-field being checked by hand.
+test of §2 and `chassis.yaml`, and it has now earned its keep three times. It
+showed the ProDesk 600 G3 SFF — which §3 and `chassis.yaml` both discuss as the
+cheap route to 64 GB — is a 4-core machine, so it fails a *different* requirement
+and never qualifies at all. It showed no listing states a storage interface. And
+it showed the two machines this section once ranked as qualifiers are a chassis
+neither the title nor the URL names correctly (§10).
+
+The pattern in all three is the same and it is the argument for building the
+console early: each error survived every reading of the plan and died on first
+contact with the data. None was a coding mistake — they were facts assumed while
+checking one field by hand.
 
 **Dell Outlet moves to Phase 3b**, where it fits naturally with the other
 well-structured, zero-adjustment vendors. It remains the better source to
@@ -1218,6 +1380,21 @@ Also wire `config/watch_urls.yaml` here — manually seeded product URLs from an
 retailer, including marketplaces. It is a few lines (a URL is a watch), it makes
 marketplace listings trackable immediately without any discovery work, and it is
 the fallback whenever discovery breaks on a source.
+
+**"Any retailer" overstates what Phase 1 can honestly deliver, and the gap is
+worth naming before the file is written.** A seeded URL is only as parseable as
+the page behind it. A Shopify product URL is tier 0 and needs nothing new — the
+same `products.json` path already in use, one product instead of a collection.
+Anything else is an HTML page needing selectors, which is precisely what §1
+defers to Phase 3 along with ChangeDetection.
+
+So the Phase 1 version of this file covers tier-0 URLs and records the rest as
+pending rather than silently failing on them. That is narrower than "any
+retailer" suggests, and it is still worth having: it is the mechanism by which a
+listing found by hand enters the observation log, and an observation not recorded
+today cannot be recovered later (§1). A seeded URL that cannot yet be parsed
+should surface as such, for the same reason an unknown chassis does — a watch
+that quietly does nothing is indistinguishable from one that found nothing (§8).
 
 ### Phase 2 — the digest
 
@@ -1367,3 +1544,7 @@ stays a record of one revision rather than a running log.
 | — | `prefer_shipped_ram_gb: 32` (§2) | `cost_to_reach` assumes the upgrade is purchasable at the modelled price; DDR4 is end-of-life with supply vanishing and prices guided up 10–20%/month. A tiebreaker and a digest label rather than a dollar term — availability risk is not a price |
 | SFF form factor an open scope question (§3, `chassis.yaml`) | SFF in scope, towers out | Size does not change the job for a machine that sits and runs, and SFF chassis take four full-size DIMMs — they are disproportionately the ones reaching 64 GB at all |
 | Phase 1 console output unspecified (§9) | Specified: two sections, shown arithmetic, named misses, all listings, warnings, ASCII only | Drafted against the real ten listings rather than described, which immediately caught that the ProDesk 600 G3 SFF fails `cpu_cores` and `storage_nvme` and never qualifies — a conclusion two earlier sections had drawn wrongly from its RAM ceiling alone. ASCII is a hard constraint, not a preference: the cp1252 console raises `UnicodeEncodeError` on §6's digest glyphs |
+| `dell-optiplex-3080-ultra`, inferred (§5, `chassis.yaml`) | `dell-optiplex-3080-micro`, documented | eTek's two "3080 Ultra" listings are 3080 **Micro** machines: the descriptions say Micro 8–9 times against one "Ultra" (inside "Ultra-Compact"), and the URL handles say `3090`, copied from another product. The Micro's Dell manual was already the source the Ultra entry was inferred *from*, so the fix removes an inference rather than resolving one — the values (2 slots, 64 GB) are unchanged, only their standing is. This retires the risk `chassis.yaml` flagged as "the one whose error would most change a ranking", and leaves the 400 G5 as the file's only unsettled entry |
+| Storage interface assumed parseable (§2, §5, §6, §9) | Unstated by this source; `storage_nvme` unmet on every listing | `NVMe`, `M.2`, `SATA` and `PCIe` appear zero times across all ten titles and all ten descriptions — eTek says only "SSD". The mocks in §6 and §9 printed `256GB NVMe`, which was assumed, not read. Every listing now pays the flat `nvme(40)` and prints `nvme unknown`. Deliberately *not* recovered from `chassis.yaml`'s `m2_nvme_slots`: that would assert a fact about the unit for sale from a fact about the model, the same conflation that produced the 600 G3 error above |
+| Two qualifiers expected in Phase 1 (§6, §9) | Zero; ten near-misses | Consequence of the storage row above: `storage_nvme` is unmet on every listing, so nothing clears every requirement. The closest is the $549.99 3080 Micro, which ships 32 GB, reaches 64 GB on one more SODIMM, and misses on nothing but the unstated interface. The mocks are now the real output, and the format has to read well with an empty qualifier section, because on real data that is the case it is in |
+| Chassis key "free once the title parses", derived from `canonical_key` (§5) | An explicit `(brand, model_number)` alias table (`chassis_aliases.yaml`) | `canonical_key` has no form-factor segment and cannot produce one. Worse, the form factor cannot be read from this vendor's text at all — the 9020's description contains `tiny`, `micro`, `sff`, `usff`, `ultra` and `small form factor` simultaneously. Brand plus model number is unambiguous (nine values, nine chassis) and survives eTek spelling the product "Optiflex" |

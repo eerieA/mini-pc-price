@@ -1,0 +1,67 @@
+# The decision rule (plan.md §2): one gate, then tunable requirements.
+#
+# This is the dial. If two weeks of data show far more qualifying machines than
+# expected, raise a `min` — the bar moves and the digest gets shorter. If almost
+# nothing qualifies, lower it, or lower the `else_penalty` so near-misses compete
+# more readily. `min` changes what counts as good; `else_penalty` changes how
+# much the shortfall costs. Both are one-line edits here, and neither touches
+# code.
+
+gates:                        # fail -> excluded at any price
+  nested_virt: true
+  # The only absolute requirement. EVE-NG runs VMs inside a VM, so without
+  # nested virtualisation the machine does not do the job at all and no price
+  # makes it acceptable. Read from cpus.yaml. In practice this almost never
+  # excludes anything — it is true for Intel 8th-gen-and-later and Zen 2+ — and
+  # it is kept for the Celeron/Pentium/Atom exceptions (§5).
+
+requirements:                 # fail -> penalised, still ranked
+  ram_max_gb:    {min: 64,   else_penalty: 325}
+  cpu_cores:     {min: 6,    else_penalty: 80}
+  storage_nvme:  {min: true, else_penalty: 40}
+
+prefer_shipped_ram_gb: 32     # a label and a tiebreaker, not a dollar term
+
+surface_near_misses: true     # digest section for single-requirement failures
+
+# ── Why 325, and a distortion to keep in view ────────────────────────────────
+# ram_max_gb's penalty was 120 in the first draft, chosen when 2 x 32 GB of DDR4
+# SODIMM cost roughly that. It now costs ~$650 (parts.yaml), so 120 understated
+# the miss five-fold: a 32 GB-capped chassis was charged less to be permanently
+# short of the target than a 64 GB-capable one paid to actually reach it, which
+# inverts the comparison the penalty exists to make. 325 is the price of the
+# 32 GB the capped machine cannot install.
+#
+# The distortion, which is documented rather than tuned away: else_penalty is a
+# flat charge while cost_to_reach is a real and now very large one. At 325
+# against ~$650-700 of actual memory, a capped machine can rank ABOVE a machine
+# that reaches 64 GB. That is the model working as specified — it is genuinely
+# cheaper to buy a machine that cannot do the job — and it is why qualifiers and
+# near-misses print as separate blocks (§6, §9) rather than one sorted list.
+#
+# Do NOT inflate else_penalty until the ordering looks right. That would be
+# fitting the dial to a desired answer, which is precisely what §2 rejected
+# weighted scoring for.
+#
+# ── prefer_shipped_ram_gb ────────────────────────────────────────────────────
+# effective_price only models upgrading UP, which assumes the upgrade is a
+# neutral transaction: pay the money, get the capacity. Under a DDR4 shortage it
+# is not — the part may simply not be there, and parts.yaml's prices are
+# systematically low because they are a hand refresh against a market guided up
+# 10-20%/month. So a listing already carrying 32 GB or more is marked in the
+# output, and where two machines are within the noise floor on effective price,
+# the one that ships with the memory wins.
+#
+# Deliberately a label rather than another dollar term: the uncertainty here is
+# about AVAILABILITY, which is not a price, and a second subjective penalty
+# beside else_penalty would double-count the shortage the RAM price already
+# reflects.
+#
+# ── On storage_nvme, as of Phase 1 ───────────────────────────────────────────
+# No eTek listing states a storage interface — not in any title, not in any
+# description (§5). So every listing fails this requirement and pays the flat 40,
+# printed as "nvme unknown" rather than "no NVMe": the drive may well be NVMe,
+# the vendor simply does not say. It is NOT inferred from chassis.yaml's
+# m2_nvme_slots, which describes what the box can take, not what is in it.
+#
+# Treat a $15 gap between two effective prices as noise (§2).

@@ -1,0 +1,57 @@
+# How a listing title maps onto a chassis.yaml key (plan.md §5).
+#
+# This file describes ONE RETAILER'S NAMING. chassis.yaml describes hardware and
+# cites a vendor document per entry; keeping them separate is deliberate, so an
+# eTek quirk never ends up inside a Dell fact.
+#
+# ── Why this is a table and not a parser ─────────────────────────────────────
+# The obvious approach — read brand, model and form factor out of the title —
+# does not survive this vendor's copy. The form-factor word is boilerplate
+# pasted between listings, not a specification:
+#
+#   - the OptiPlex 9020 listing contains "tiny", "micro", "sff", "usff",
+#     "ultra" AND "small form factor", all six, for one machine
+#   - the 3070's title says "Mini"; its chassis key says micro; its description
+#     says "tiny"
+#   - both 3080 listings say "Ultra" in the title and "Micro" 8-9 times in the
+#     description, which is the correct one
+#
+# Brand plus model number, by contrast, is clean: nine values across eTek's ten
+# listings, no collisions, and it survives the vendor misspelling the product
+# "Optiflex" because neither input depends on the product name being spelled
+# right. So the model number is matched and the form-factor segment comes from
+# whoever adds the line here, read off vendor documentation.
+#
+# Two rules for the code that uses this:
+#   - Strip the CPU token before matching the model number, or the 5060
+#     listing's "i5-8500" reads as a second model number.
+#   - Never read the Shopify handle. Both 3080 handles say "3090" and the 9020's
+#     says "dell-optiplex-3070-...-copy" — duplicated from another product and
+#     never renamed. The handle is a fine unique key for a listing; it is not
+#     evidence about the hardware.
+#
+# A (brand, model_number) pair that is absent is parse_ok = false and is held out
+# of the ranking. Same rule as a missing chassis entry, same reason: never
+# default (§5).
+
+dell:
+  "9020": dell-optiplex-9020-micro
+  "5060": dell-optiplex-5060-micro
+  "3070": dell-optiplex-3070-micro
+  "7070": dell-optiplex-7070-micro
+  "3080": dell-optiplex-3080-micro   # titles say "Ultra"; see chassis.yaml
+
+hp:
+  "600g3": hp-prodesk-600-g3-sff
+  "400g5": hp-prodesk-400-g5-mini
+  "800g4": hp-elitedesk-800-g4-mini
+
+lenovo:
+  "m73": lenovo-m73-tiny
+
+# Model numbers are quoted so YAML reads them as strings — unquoted, 3080 is an
+# integer and 600g3 is not, which would make the lookup type-dependent.
+#
+# Note these keys are NOT canonical_key (§4). canonical_key is
+# dell:optiplex3070:i5-9500t:16gb:256gb and carries no form-factor segment, so
+# it cannot produce a chassis key and the two are built independently.

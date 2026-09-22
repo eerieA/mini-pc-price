@@ -201,29 +201,37 @@ hp-elitedesk-800-g4-mini:
   # No ram_max_unofficial_gb: unlike the Dell Micros, I found no credible report
   # of 2 x 32 GB working here. Absence of evidence — not evidence it fails.
 
-dell-optiplex-3080-ultra:
+dell-optiplex-3080-micro:
   ram_slots: 2
   ram_max_gb: 64
   m2_nvme_slots: 1
   sata: true
-  # INFERRED, NOT CONFIRMED — the one entry here not backed by a document about
-  # the chassis it describes. The 3080 Ultra is a distinct product (the
-  # monitor-mount form factor) and no Ultra-specific Dell page could be
-  # retrieved; the Dell URL 404s and searches redirect to the Micro. These
-  # values come from the OptiPlex 3080 *Micro*, same generation and platform,
-  # whose manual states "Two SODIMM", DDR4, maximum 64 GB, 4/8/16/32 GB per
-  # slot.
+  # Dell OptiPlex 3080 Micro: "Two SODIMM", DDR4, maximum 64 GB, 4/8/16/32 GB
+  # per slot.
   # https://www.dell.com/support/manuals/en-us/optiplex-3080-micro/optiplex3080_micro_specs/technical-specifications
   #
-  # Checked against that Micro manual again on 2026-09-22 and consistent with
-  # it — but that re-checks the inference's source, not the Ultra, so the entry
-  # stays inferred. 64 GB is plausible on 10th-gen Comet Lake, which officially
-  # supports 32 GB SODIMMs; m2_nvme_slots is the least certain field.
+  # This entry was keyed dell-optiplex-3080-ultra until 2026-09-22 and carried
+  # the file's only "INFERRED, NOT CONFIRMED" warning: the values came from the
+  # Micro manual because no Ultra-specific Dell document could be retrieved, and
+  # the warning said a wrong value here would change the ranking more than any
+  # other in the file.
   #
-  # Two of eTek's ten listings are this chassis, including the most expensive at
-  # $549.99, and this is the only entry claiming 64 GB — so it is the one whose
-  # error would most change a ranking. Worth confirming from an Ultra teardown
-  # or a Dell Ultra service manual before acting on it.
+  # It is now keyed Micro, and the inference is gone rather than resolved,
+  # because the two eTek listings are not Ultras. Their titles say "Optiflex
+  # 3080 Ultra" but their descriptions say "Micro" eight and nine times each
+  # against a single "Ultra" — which occurs inside "Ultra-Compact" — and their
+  # URL handles say 3090, having been copied from another product and never
+  # renamed. The listings also state 6 cores / 12 threads and Intel UHD 630,
+  # consistent with the i5-10500T in a Micro.
+  #
+  # So the Micro manual is now a document about the chassis being sold, which is
+  # what the entry always needed. The values are unchanged; only their standing
+  # is. If an actual 3080 Ultra ever appears in tracked inventory it needs its
+  # own entry and its own document — do not reuse this one.
+  #
+  # m2_nvme_slots remains the least certain field here. Note it is not currently
+  # load-bearing: no eTek listing states a storage interface at all (plan.md §5),
+  # so every listing fails storage_nvme regardless of what the chassis supports.
 
 # ── Verification status ──────────────────────────────────────────────────────
 # Drafted 2026-09-21, reviewed against vendor documentation 2026-09-22. Nothing
@@ -239,14 +247,15 @@ dell-optiplex-3080-ultra:
 #                              listing's video ports against the 3060 Micro
 #   hp-elitedesk-800-g4-mini   HP maintenance guide (m2_nvme_slots read off a
 #                              board photo on p.24, so it is the soft field)
+#   dell-optiplex-3080-micro   Dell manual. Was the file's one inferred entry,
+#                              keyed -ultra; the listings turned out to be
+#                              Micros, so the manual now describes the chassis
+#                              being sold. See the entry.
 #
 # Not settled, in the order they would cost something:
-#   dell-optiplex-3080-ultra   inferred from the 3080 Micro — no Ultra document
-#                              found. The only 64 GB entry, and two listings use
-#                              it, so a wrong value here changes the ranking
-#                              most.
 #   hp-prodesk-400-g5-mini     32 GB is read off a parts list rather than a
 #                              stated maximum; HP QuickSpecs would settle it.
+#                              Now the only unsettled entry in the file.
 #
 # Conventions that fell out of the review, worth keeping when adding entries:
 #   - Vendor sheets state several form factors at once, with the small one in
