@@ -1,0 +1,109 @@
+# Upgrade part prices, in CAD, for the cost_to_reach() terms in plan.md §2.
+#
+# These feed effective_price. A machine listed at 16 GB is compared against a
+# machine listed at 64 GB by adding what it costs to close the gap, so a wrong
+# number here silently re-orders the ranking.
+#
+# ── READ THIS BEFORE TRUSTING THE NUMBERS ────────────────────────────────────
+# Priced 2026-09-22, during a DRAM shortage that makes these the most volatile
+# values in the project. Memory rose 80-90% QoQ from Q4 2025 into Q1 2026 and
+# DDR4 specifically rose >50% in Q3 2026; suppliers are telling customers to
+# expect a further 10-20% per month through end of 2026. Analysts expect tight
+# supply into late 2027.
+#   https://wccftech.com/memory-shortages-drive-ddr4-prices-over-50-in-q3-2026-ddr3-also-impacted-by-higher-costs/
+#   https://sourceability.com/post/tracking-memory-price-increases-across-the-last-several-quarters
+#
+# Two causes, and the second is the one that matters here:
+#   1. HBM demand. Roughly a 3:1 HBM-to-DDR5 wafer conversion, HBM sold out for
+#      2026, so capacity left standard DRAM. This inflates everything.
+#   2. DDR4 is end-of-life. Micron's final mainstream shipments were early 2026,
+#      SK hynix wound down around April 2026, Samsung extended to December 2026
+#      but earmarked for contract customers, not retail.
+#      https://www.microchipusa.com/industry-news/samsung-and-sk-hynix-extend-ddr4-lifecycles
+#
+# Every chassis in chassis.yaml is DDR4. So this project is buying into a part
+# with no new supply coming, ever — the price has no reason to fall back the way
+# a demand spike would. Re-check these before any purchase decision; a number
+# more than a month old is probably low, and low in the direction that makes
+# under-specified machines look better than they are.
+
+ram:
+  # DDR4 SODIMM covers every Tiny/Mini/Micro chassis. SFF machines are in scope
+  # (plan.md §3) and take full-size DDR4 UDIMMs instead — a different part at a
+  # different price, not yet surveyed. The 600 G3 SFF reaches 64 GB across four
+  # DIMM sockets, so its cost_to_reach is 4 x 16 GB or 2 x 32 GB UDIMM, and
+  # pricing it with the SODIMM figure below is wrong in an unknown direction.
+  # Price ddr4_udimm_* before trusting any SFF ranking.
+  #
+  # Priced as 2 x single 32 GB modules, NOT as a matched 64 GB kit. The kit is
+  # the wrong unit here: Canada Computers lists a Kingston FURY 64 GB (2x32GB)
+  # kit at $1,289.99 while two single 32 GB modules come to ~$650, and nothing
+  # about a 2-slot Micro needs a matched kit. Buying the kit would overstate
+  # cost_to_reach(64GB) by roughly $640 and wrongly sink every 16/32 GB machine.
+  ddr4_sodimm_32gb: 325   # KLEVV 32GB (1x32GB) DDR4-3200 CL22, in stock
+  ddr4_sodimm_16gb: 185   # see the note below on this figure
+
+  # Full-size UDIMM, for the SFF chassis (4 sockets). Priced as 2 x 32GB kits,
+  # since a 4-socket board reaching 64 GB takes two 2x16GB kits and the kits are
+  # what retail actually stocks — every plain OEM single module checked was
+  # "no longer available", the same EOL pattern as the SODIMMs.
+  ddr4_udimm_32gb_kit: 350   # KLEVV BOLT X 32GB (2x16GB) DDR4-3200 CL16
+  # Canada Computers, read 2026-09-22:
+  #   KLEVV BOLT X 32GB (2x16GB)        $349.99  in stock     <- used
+  #   CORSAIR VENGEANCE LPX 32GB (2x16) $369.99  (was $435.99)
+  #   G.SKILL Ripjaws V 32GB (2x16GB)   $379.99
+  #   TEAMGROUP T-FORCE VULCAN Z 32GB   $399.99
+  #   HP 16GB DDR4-2666 UDIMM (single)  "no longer available"
+  # https://www.canadacomputers.com/en/1022/desktop-memory?q=Capacity-32GB
+  #
+  # So 64 GB in a 4-socket SFF is ~$700 (two kits) against ~$650 for 2 x 32 GB
+  # SODIMM in a 2-slot Micro. Close enough that form factor is not the deciding
+  # factor it might look like — the SFF's advantage is that it CAN reach 64 GB
+  # at all, not that its memory is cheaper.
+  #
+  # CAVEAT, and it is a real one: these are DDR4-3200 CL16 enthusiast kits.
+  # Business chassis of this era run memory at 2400/2666 and their BIOSes are
+  # not XMP-friendly, so such a kit will downclock. That is fine for a lab
+  # machine — capacity is the requirement, not bandwidth — but it means the
+  # cheap end of this list is not validated for these boards the way an OEM
+  # part number would be. The QVL question is unanswered and priced as if it
+  # does not matter.
+
+  # Sources, Canada Computers, read 2026-09-22:
+  #   KLEVV 32GB (1x32GB) DDR4-3200      $324.99  in stock        <- used
+  #   Kingston ValueRAM 32GB (1x32GB)    $409.99  (was $640.99)
+  #   Kingston FURY Impact 32GB (1x32GB) $414.99  online sold out
+  #   Crucial CT32G4SFD832A 32GB         "no longer available"
+  #   Kingston FURY 64GB (2x32GB) kit  $1,289.99
+  # https://www.canadacomputers.com/en/1010/laptop-memory?q=Capacity-32GB
+  #
+  # $325 is the cheapest in-stock module, not a median. That is deliberate but
+  # worth naming: it assumes the buyer will shop, and it is the floor rather
+  # than the expected price. The two Kingston parts at $410-415 are what this
+  # costs if KLEVV is gone by the time a machine is actually bought, which on a
+  # discontinued part is a real possibility — it would put 2 x 32 GB at ~$820.
+  #
+  # The struck-through regular prices ($640.99 and $649.99) are not history.
+  # They are compare_at inflation of exactly the kind plan.md §2 distrusts for
+  # listings; do not read them as "this was $641 and is now cheap".
+  #
+  # ddr4_sodimm_16gb is interpolated, not observed: no in-stock 16 GB single
+  # module was priced during this check, and it was inferred from 2x16GB kits
+  # in the $370-435 range. It is only used if a cost_to_reach path needs a
+  # 16 GB step, which for a 2-slot chassis going to 64 GB it never does — both
+  # slots take 32 GB. Replace it with an observed price before relying on it.
+
+storage:
+  # NVMe, for cost_to_reach(NVMe). NAND is caught in the same squeeze: a data
+  # point from r/bapcsalescanada, 2026-09 — a 2 TB WD Black SN7100 at $450,
+  # against $274 paid for the 4 TB version of a comparable drive a year prior.
+  # Roughly a 3-4x move per terabyte.
+  #
+  # NOT PRICED. No tracked listing yet needs this term: every eTek machine
+  # already ships with an SSD, and the one chassis that cannot take NVMe
+  # (9020 Micro, SATA-only M.2) cannot be fixed at any price — see the note in
+  # chassis.yaml, and plan.md §2 has no way to express an unmeetable
+  # requirement. Price it when a listing actually needs it, and prefer a gap
+  # here to a guess, the same rule chassis.yaml follows.
+  nvme_512gb: null
+  nvme_1tb: null

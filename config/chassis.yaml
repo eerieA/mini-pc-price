@@ -1,0 +1,262 @@
+# Chassis RAM ceiling and M.2 slots, per model (plan.md §5).
+#
+# This is the table where being wrong costs money rather than a bad ranking:
+# the 64 GB ceiling is invisible in a listing title, so a wrong entry here is a
+# silent pricing error discovered only after the box is open. Every entry cites
+# its source. DRAFT — each line needs verifying before it is trusted (see
+# "Verification status" at the bottom).
+#
+# Populated on demand, one entry per model that appears in tracked inventory
+# (§5). A model that is absent is NOT defaulted — it is parse_ok = false and
+# surfaces in the digest for a manual lookup (§5, §8).
+#
+# Fields:
+#   ram_slots    SODIMM/DIMM sockets
+#   ram_max_gb   OFFICIAL vendor maximum, and the only ceiling recorded here.
+#                See the note below on why.
+#   m2_nvme_slots  M.2 sockets that accept an NVMe drive. NOT the same as "has
+#                an M.2 slot" — see the 9020 Micro, whose M.2 is SATA-only, and
+#                note that Wi-Fi 2230 sockets are excluded everywhere.
+#   sata         has a 2.5" SATA bay
+#
+# ── Only the official ceiling is recorded ────────────────────────────────────
+# Several 8th/9th-gen chassis are specified by the vendor at 32 GB (16 GB per
+# slot) but are reported running 2 x 32 GB in practice. The plan's §5 example
+# asserted 64 GB for the 7070 Micro, 3070 Micro and EliteDesk 800 G4; Dell's and
+# HP's own documentation say 32 GB.
+#
+# A draft of this file carried both numbers, in ram_max_gb and a second
+# ram_max_unofficial_gb. That field is gone, and the reason it is gone is worth
+# keeping: an unofficial ceiling cannot be verified from vendor documentation by
+# construction — that is what makes it unofficial — so it is the one field here
+# that can never be checked the way every other field can. In review it also
+# drew a 4-DIMM Tower/SFF capacity into a 2-slot Micro's entry, which is exactly
+# the kind of cross-chassis error this table exists to prevent.
+#
+# So ram_max_gb is the vendor's number, ranking reads it, and a machine that
+# officially caps at 32 GB is a near-miss carrying else_penalty: 325 (§2). Where
+# a larger capacity is credibly reported, that evidence lives in a comment on
+# the entry, where a human can weigh it and code cannot silently act on it.
+# This is §5's "prefer a gap to a confident guess" applied to a whole field.
+
+# ── Present in eTek inventory, 2026-09-21 ────────────────────────────────────
+
+lenovo-m73-tiny:
+  ram_slots: 2
+  ram_max_gb: 16          # DDR3, 2 x 204-pin SODIMM
+  m2_nvme_slots: 0        # 2.5" SATA / DOM only — no M.2 at all
+  sata: true
+  # Lenovo PSREF, ThinkCentre M73 Tiny Platform Specifications (PDF):
+  # "16GB max, PC3-12800 1600MHz DDR3, two 204-pin SODIMM sockets (notebook)"
+  # https://psref.lenovo.com/syspool/Sys/PDF/ThinkCentre/ThinkCentre_M73_Tiny/ThinkCentre_M73_Tiny_Spec.PDF
+
+dell-optiplex-9020-micro:
+  ram_slots: 2
+  ram_max_gb: 16          # DDR3L
+  m2_nvme_slots: 0        # an M.2 exists but is SATA-only — no NVMe path
+  sata: true
+  # Dell OptiPlex 9020M specifications: storage is SATA throughout, with no
+  # mention of NVMe anywhere in the document (verified 2026-09-22).
+  # https://www.dell.com/support/manuals/en-us/optiplex-9020m-desktop/Opti9020MPub/specifications
+  # Corroborated by hardware-corner, which is explicit about the mechanism: the
+  # M.2 2280 slot is B-key and "supports only SATA drives with 600 MB/s speed".
+  # B-key is consistent with that — NVMe x4 drives are M-key or B+M — as is the
+  # 2014 Haswell/Q87 platform, which predates NVMe boot support.
+  # https://www.hardware-corner.net/desktop-models/Dell-OptiPlex-9020M/
+  #
+  # Hence m2_nvme_slots: 0 rather than 1. The distinction is that the field
+  # means "can take an NVMe drive", not "has an M.2 connector". It matters
+  # beyond bookkeeping: for this chassis cost_to_reach(NVMe) is not purchasable
+  # at any price, because no drive makes a SATA-only slot NVMe. §2 has no way to
+  # express that — an unmeetable requirement is closer to a gate than a cost.
+  # Academic here, since ram_max_gb 16 already sinks this machine, but a chassis
+  # where it is not academic would need §2 to say what happens.
+  #
+  # Dell's own spec sheet reads "Up to 4 DIMM slots (2 for USFF & Micro) ...
+  # up to 32GB (16GB for USFF & Micro)": the parentheticals override for this
+  # chassis, so 2 slots and 16 GB. The 4-slot/32 GB figures are the SFF and
+  # tower, which are a different chassis and not this entry.
+
+hp-prodesk-600-g3-sff:
+  ram_slots: 4            # SFF, not a Mini — full-size DIMMs
+  ram_max_gb: 64
+  m2_nvme_slots: 1        # two M.2 connectors, one of which is 2230 Wi-Fi
+  sata: true
+  # HP Hardware Reference Guide, ProDesk 600 G3 SFF: up to 64 GB, four DIMM
+  # sockets (DIMM1-4, two per channel), DDR4-2400.
+  # https://h10032.www1.hp.com/ctg/Manual/c05387853.pdf
+  # This is an SFF box, not a Tiny/Mini/USFF one — larger, but in scope: SFF is
+  # accepted and towers are not (plan.md §3). Four full-size DIMM sockets are
+  # what get it to 64 GB, where every Micro in this file caps at 32.
+  #
+  # That does NOT make the eTek listing a contender, and the distinction is
+  # worth keeping straight: this table describes a CHASSIS, the listing is a
+  # configuration of one. eTek's 600 G3 ships an i5-6500T (4 cores) with no
+  # NVMe, so it fails cpu_cores and storage_nvme and lands as a triple
+  # near-miss around $1085 (§9). A drafting note here once called it "the
+  # cheapest route to the §2 target in the whole collection" — true of the
+  # chassis, false of the machine actually for sale, and only caught by running
+  # the full rule set instead of checking ram_max_gb by hand.
+
+dell-optiplex-5060-micro:
+  ram_slots: 2
+  ram_max_gb: 32
+  m2_nvme_slots: 1
+  sata: true
+  # hardware-corner: up to 32 GB SODIMM DDR4-2400/2666 across two slots, Q370.
+  # https://www.hardware-corner.net/desktop-models/Dell-OptiPlex-5060M/
+  #
+  # The eTek listing for this chassis contradicts itself twice, and the video
+  # ports are what settle it. Resolved by hand 2026-09-22 as a 5060 Micro.
+  # https://www.eteklaptop.ca/products/dell-optiplex-5060-core-i5-8500-16gb-256-ssd-windows-11-pro-mini-desktop-pc-refurbished
+  #
+  # The listing says "core i5-8500" (a 65 W part, which ships in the SFF, not
+  # the 35 W T-series the Micro takes) and its closing paragraph calls the
+  # machine a "Dell OptiPlex 3060 USFF" (wrong model). Its tags and body
+  # otherwise say Mini / USFF throughout.
+  #
+  # The video ports discriminate between the candidates where the prose only
+  # corroborates: the listing specifies 2 x DisplayPort 1.2 and no HDMI.
+  #   5060 Micro  2 x DP        — Dell OptiPlex 5060 spec sheet
+  #   3060 Micro  1 x DP + HDMI — Dell OptiPlex 3060 Micro manual, video
+  # https://i.dell.com/sites/csdocuments/Shared-Content_data-Sheets_Documents/en/OptiPlex_5060_Spec_Sheet.pdf
+  # https://www.dell.com/support/manuals/en-us/optiplex-3060-micro/optiplex_3060_micro_setup_and_specs/video
+  #
+  # So the chassis is a 5060 Micro, the "3060" is a typo, and the CPU is an
+  # i5-8500T with a dropped T — the port evidence establishes a Micro, and a
+  # Micro cannot hold a 65 W chip. Both errors are eTek transcription slips,
+  # and they point at different chassis, which is why neither settled it alone.
+  #
+  # Keep the method rather than the conclusion: a physical port list is
+  # falsifiable against a vendor document, while marketing prose is copy-paste
+  # boilerplate that here carried a wrong model number. When a title and a body
+  # disagree, look for the field a spec sheet can refute.
+  #
+  # Note also that Dell's 5060 line is Tower / SFF / Micro — there is no 5060
+  # USFF, so eTek's "USFF" is their own vocabulary (in Dell's 9020-era naming
+  # USFF and Micro were the same thing).
+
+hp-prodesk-400-g5-mini:
+  ram_slots: 2
+  ram_max_gb: 32
+  m2_nvme_slots: 1        # M.2 2280-S1-B-M, NVMe 1.1
+  sata: true
+  # HP ProDesk 400 G5 Desktop Mini spec sheet (read 2026-09-22): the largest
+  # SODIMM offered in the Components/Upgrades table is a 32 GB module
+  # (HP 13L73AA), across two sockets.
+  # https://pcb.inc.hp.com/dc/api/spec-sheet/ww-en/29964343/pdf/7EM40EA.pdf
+  #
+  # A draft of this entry read 64 GB, from a search summary claiming each socket
+  # takes 32 GB. The sheet itself does not say that: offering a 32 GB module is
+  # not the same claim as supporting 2 x 32 GB, and the sheet states no total.
+  # 32 GB is also what every other 8th/9th-gen chassis in this file is specified
+  # at, which is the generational pattern rather than a coincidence.
+  #
+  # Still the least certain of the RAM figures here — it is read off a parts
+  # list, not a stated maximum, and HP's QuickSpecs for this model would settle
+  # it. The conservative value is the safe direction to be wrong in: it makes
+  # this a near-miss carrying else_penalty: 325 rather than a qualifier, so an
+  # error costs a machine's rank and not a purchase.
+
+dell-optiplex-3070-micro:
+  ram_slots: 2
+  ram_max_gb: 32
+  m2_nvme_slots: 1
+  sata: true
+  # Dell OptiPlex 3070 Micro Setup and Specifications, memory section:
+  # maximum 32 GB, two SODIMM slots. Verified 2026-09-22 — Dell states 32 GB
+  # and says nothing about 64 GB anywhere on the page.
+  # https://www.dell.com/support/manuals/en-us/optiplex-3070-micro/opti3070_micro_setiup_specs/memory
+
+dell-optiplex-7070-micro:
+  ram_slots: 2
+  ram_max_gb: 32          # Dell official: 16 GB per slot
+  m2_nvme_slots: 1        # PCIe x4 NVMe; the second M.2 is 2230 Wi-Fi
+  sata: true
+  # Dell OptiPlex 7070 Micro Setup and Specifications, memory section:
+  # "2 SODIMM", DDR4 non-ECC, minimum 4 GB, maximum 32 GB, 16 GB per slot.
+  # Verified 2026-09-22 — Dell states 32 GB and nothing about 64 GB.
+  # https://www.dell.com/support/manuals/en-us/optiplex-7070-micro/opti7070_micro_setup_specs/memory
+  # Same source: one PCIe x4 NVMe slot plus an M.2 2230 for wireless — so
+  # m2_nvme_slots is 1, not the 2 the plan's §5 example assumed.
+  #
+  # Unsupported 64 GB, recorded as evidence and deliberately not as a field:
+  # ServeTheHome's TinyMiniMicro review ran two 32 GB Samsung SODIMMs in this
+  # chassis — "this is not a supported configuration, but it is great".
+  # https://www.servethehome.com/dell-optiplex-7070-micro-project-tinyminimicro-guide-and-review/
+  # Worth knowing before buying, since it is the difference between a 5-6 node
+  # lab fitting or not. Not worth ranking on: eTek's 15-day window and 30%
+  # restocking fee (§3) make "probably works" an expensive thing to be wrong
+  # about, and Dell will not honour it.
+
+hp-elitedesk-800-g4-mini:
+  ram_slots: 2
+  ram_max_gb: 32
+  m2_nvme_slots: 2        # two M.2 sockets taking PCIe NVMe 3.0 x4 or SATA
+  sata: true
+  # hardware-corner: "RAM max: 32 GB" across two SODIMM DDR4-2666 slots; "two
+  # M.2 socket(s) that supports PCIe NVMe (PCIe 3.0 x4) or SATA M.2 drives",
+  # plus a separate M.2 2230 for Wi-Fi/BT.
+  # https://www.hardware-corner.net/desktop-models/HP-EliteDesk-800-G4-Mini/
+  # No ram_max_unofficial_gb: unlike the Dell Micros, I found no credible report
+  # of 2 x 32 GB working here. Absence of evidence — not evidence it fails.
+
+dell-optiplex-3080-ultra:
+  ram_slots: 2
+  ram_max_gb: 64
+  m2_nvme_slots: 1
+  sata: true
+  # INFERRED, NOT CONFIRMED — the one entry here not backed by a document about
+  # the chassis it describes. The 3080 Ultra is a distinct product (the
+  # monitor-mount form factor) and no Ultra-specific Dell page could be
+  # retrieved; the Dell URL 404s and searches redirect to the Micro. These
+  # values come from the OptiPlex 3080 *Micro*, same generation and platform,
+  # whose manual states "Two SODIMM", DDR4, maximum 64 GB, 4/8/16/32 GB per
+  # slot.
+  # https://www.dell.com/support/manuals/en-us/optiplex-3080-micro/optiplex3080_micro_specs/technical-specifications
+  #
+  # Checked against that Micro manual again on 2026-09-22 and consistent with
+  # it — but that re-checks the inference's source, not the Ultra, so the entry
+  # stays inferred. 64 GB is plausible on 10th-gen Comet Lake, which officially
+  # supports 32 GB SODIMMs; m2_nvme_slots is the least certain field.
+  #
+  # Two of eTek's ten listings are this chassis, including the most expensive at
+  # $549.99, and this is the only entry claiming 64 GB — so it is the one whose
+  # error would most change a ranking. Worth confirming from an Ultra teardown
+  # or a Dell Ultra service manual before acting on it.
+
+# ── Verification status ──────────────────────────────────────────────────────
+# Drafted 2026-09-21, reviewed against vendor documentation 2026-09-22. Nothing
+# here has been confirmed against a physical machine.
+#
+# Solid — a vendor document about this exact chassis says so:
+#   lenovo-m73-tiny            Lenovo PSREF
+#   dell-optiplex-9020-micro   Dell 9020M spec sheet + specifications page
+#   hp-prodesk-600-g3-sff      HP datasheet / hardware reference guide
+#   dell-optiplex-3070-micro   Dell manual
+#   dell-optiplex-7070-micro   Dell manual
+#   dell-optiplex-5060-micro   Dell spec sheet; chassis identified from the
+#                              listing's video ports against the 3060 Micro
+#   hp-elitedesk-800-g4-mini   HP maintenance guide (m2_nvme_slots read off a
+#                              board photo on p.24, so it is the soft field)
+#
+# Not settled, in the order they would cost something:
+#   dell-optiplex-3080-ultra   inferred from the 3080 Micro — no Ultra document
+#                              found. The only 64 GB entry, and two listings use
+#                              it, so a wrong value here changes the ranking
+#                              most.
+#   hp-prodesk-400-g5-mini     32 GB is read off a parts list rather than a
+#                              stated maximum; HP QuickSpecs would settle it.
+#
+# Conventions that fell out of the review, worth keeping when adding entries:
+#   - Vendor sheets state several form factors at once, with the small one in
+#     parentheses ("up to 32GB (16GB for USFF & Micro)"). The parenthetical is
+#     the one that applies. Two errors in this file's first draft came from
+#     reading the headline number instead.
+#   - An M.2 socket is not an NVMe socket (see 9020 Micro), and a 2230 Wi-Fi
+#     socket is never counted.
+#   - When a listing is ambiguous about its chassis, identify it by a physical
+#     detail a vendor document can refute — video ports settled the 5060 — not
+#     by its prose, which is boilerplate and was wrong about the model number.
+#   - Where a chassis is reported exceeding its official ceiling, that belongs
+#     in a comment, not a field. See the note at the top of this file.

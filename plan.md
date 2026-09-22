@@ -21,33 +21,36 @@ ChangeDetection.io owns the messy web; a small Python package owns the domain
 logic. Same boundary as v1 — but the integration is a **pull**, not a webhook.
 
 ```text
-  ┌────────────────────────────────┐
-  │      ChangeDetection.io        │   docker, one container
-  │                                │
-  │  fetch / JS render / cookies   │
-  │  CSS / XPath / JSON / jq       │
-  │  per-retailer selectors        │
-  │  scheduled checks + history    │
-  └───────────────┬────────────────┘
-                  │
-                  │  poll.py reads the REST API every 30 min
-                  │  GET /api/v1/watch
-                  │  GET /api/v1/watch/<uuid>/history
-                  ▼
-  ┌────────────────────────────────┐
-  │      deal tracker (python)     │   two cron jobs, no service
-  │                                │
-  │  parse specs from snapshot     │
-  │  canonical product key         │
-  │  write observations → SQLite   │
-  └───────────────┬────────────────┘
-                  │
-                  │  digest.py, daily 08:00
-                  ▼
+  ┌────────────────────────────────┐   ┌────────────────────────────────┐
+  │      ChangeDetection.io        │   │   vendor product JSON (tier 0) │
+  │            docker              │   │                                │
+  │  fetch / JS render / cookies   │   │  requests.get(products.json)   │
+  │  CSS / XPath / JSON / jq       │   │  no container, no selectors    │
+  │  per-retailer selectors        │   │                                │
+  │  scheduled checks + history    │   │  eTek (Phase 1)                │
+  └───────────────┬────────────────┘   └───────────────┬────────────────┘
+                  │                                    │
+                  │  GET /api/v1/watch                 │  raw bytes → data/raw/
+                  │  GET /api/v1/watch/<uuid>/history  │
+                  └─────────────────┬──────────────────┘
+                                    ▼
+  ┌────────────────────────────────────────────────────┐
+  │              deal tracker (python)                 │  two cron jobs, no service
+  │                                                    │
+  │  parse specs from snapshot                         │
+  │  canonical product key                             │
+  │  write observations → SQLite                       │
+  └───────────────────────┬────────────────────────────┘
+                          │
+                          │  digest.py, daily 08:00
+                          ▼
   ┌────────────────────────────────┐
   │  filter → rank → one email     │
   └────────────────────────────────┘
 ```
+
+Two fetch paths, one parser. Which one a source uses is a property of the source,
+not a second architecture — see below.
 
 ### Why pull instead of the webhook
 
@@ -72,12 +75,50 @@ debugging. Retail prices do not move fast enough for 30-minute latency to matter
 The webhook stays available as a later low-latency nudge if polling ever proves
 too slow. It is not needed for v1.
 
+### Why tier-0 sources skip ChangeDetection entirely
+
+A vendor's own product JSON (§5, tier 0) is an API, not a page to watch. Routing
+it through a change-detector buys nothing and costs the second argument above:
+CD would fetch the URL on a timer and hand back a text blob that `poll.py` must
+`json.loads` anyway. The messy web that §1's boundary exists to contain is not
+present in a Shopify `products.json`.
+
+So `poll.py` fetches those sources directly. CD arrives with the first source
+that genuinely needs it — an HTML page requiring a selector, a JS render, or
+cookies — which is ITRefurbs in Phase 3 (§9).
+
+This is a deliberate trade, and the thing given up is real: CD would keep
+checking on a schedule of its own even if `poll.py` were broken or the desktop
+were off, whereas a direct fetch that does not run is an observation that is gone
+for good (§2 — observations cannot be backfilled). What makes the trade worth it
+is that Phase 1 is testing the *parser*, and every piece of CD infrastructure —
+container health, API token, watch UUID, CD's text-diff semantics over JSON — is
+a way for Phase 1 to fail for reasons that have nothing to do with the code being
+proved (§9). Against a source whose whole appeal is that it cannot break, adding
+four ways for the harness to break is the wrong direction.
+
+Two properties are worth borrowing from the CD path anyway, and both are cheap:
+
+- **Persist the raw response before parsing it.** `poll.py` writes each fetch to
+  `data/raw/<source>/<timestamp>.json` and parses from there. That recovers CD's
+  most useful property for about five lines — the parser can be re-run against
+  stored bytes while debugging, without re-hitting the vendor — and it means a
+  parser bug discovered on day 10 can still be fixed against day 1's data.
+- **Write an observation every run, unconditionally.** Not only when something
+  changed. This is the same requirement that ruled out the webhook, and on the
+  direct path it is simply what the code does rather than a property of CD's
+  history endpoint that has to be verified.
+
+Nothing here is wasted if CD lands later. `specs.py`, `db.py`, the schema and the
+chassis table are all source-agnostic; only where `poll.py` gets its bytes
+changes, and that is one function.
+
 ### Why there is no web service
 
 Once the flow is pull-based, the entire system is:
 
 ```text
-every 30 min   poll.py     CD API → parse → SQLite
+every 30 min   poll.py     fetch (direct or CD API) → parse → SQLite
 daily 08:00    digest.py   SQLite → filter → email
 ```
 
@@ -119,12 +160,39 @@ gates:                        # fail → excluded at any price
   nested_virt: true
 
 requirements:                 # fail → penalised, still ranked
-  ram_max_gb:    {min: 64,   else_penalty: 120}
+  ram_max_gb:    {min: 64,   else_penalty: 325}
   cpu_cores:     {min: 6,    else_penalty: 80}
   storage_nvme:  {min: true, else_penalty: 40}
 
+prefer_shipped_ram_gb: 32     # see "Shipped RAM is worth more than upgradeable RAM"
+
 surface_near_misses: true     # digest section for single-requirement failures
 ```
+
+`ram_max_gb`'s penalty was 120 in the first draft of this section, chosen when
+2 × 32 GB of DDR4 SODIMM cost roughly that. It now costs ~$650 (§parts.yaml), so
+120 understated the miss by a factor of five: a 32 GB-capped chassis was being
+charged less to be permanently short of the target than a 64 GB-capable one paid
+to actually reach it, which inverts the comparison the penalty exists to make.
+325 is the price of the 32 GB the capped machine cannot install — the closest
+thing to a non-arbitrary value this dial has ever had, though it is still a
+preference and not a derived figure.
+
+> **A known distortion at this setting.** `else_penalty` is a flat charge, while
+> `cost_to_reach` is a real and now very large one. At 325 against ~$650–700 of
+> actual memory, every capped machine ranks *above* every machine that reaches
+> 64 GB — on the 2026-09 eTek inventory the entire top of the list is
+> 32 GB-capped, and the cheapest qualifying machine sits 7th. That is the model
+> working as specified: it is genuinely cheaper to buy a machine that cannot do
+> the job than one that can. It is also a trap if the list is read as a
+> recommendation, because the gate the project exists to satisfy is 64 GB.
+>
+> The digest's near-miss section (§6) is what keeps this honest — capped
+> machines belong there, not interleaved with qualifiers — and the one number
+> worth watching is the gap between the cheapest near-miss and the cheapest
+> qualifier. Do not "fix" this by inflating `else_penalty` until the ordering
+> looks right: that would be fitting the dial to a desired answer, which is
+> precisely what §2 rejected weighted scoring for.
 
 This is the dial. If two weeks of data show far more qualifying machines than
 expected, raise `min` — the bar moves and the digest gets shorter. If almost
@@ -157,9 +225,44 @@ requirement: if the chassis can reach 64 GB, the listing pays the *real* cost of
 the SODIMMs; if it cannot, it pays `else_penalty` instead. A machine is never
 charged both for an upgrade and for failing to be upgradeable.
 
-RAM is upgradeable and cheap. A 16 GB M920q at $300 plus $60 of DDR4 SODIMM beats
-a 32 GB one at $400. v1 §19 poses exactly this question and the v1 scoring model
-cannot express it, because it scores what the retailer listed. This does.
+RAM is upgradeable. It is no longer cheap, and that changed the answer to v1
+§19's question rather than the machinery that answers it.
+
+This section originally read "RAM is upgradeable and cheap. A 16 GB M920q at $300
+plus $60 of DDR4 SODIMM beats a 32 GB one at $400." At 2026 prices the upgrade in
+that example costs ~$325 per 32 GB module, so the 16 GB machine lands at $625 and
+loses to the $400 one. The *method* is what v1 could not express and this still
+can — score post-upgrade cost, not the listing — but its conclusion inverted, and
+a plan that stated the conclusion as a standing fact would now be lying.
+
+### Shipped RAM is worth more than upgradeable RAM
+
+The formula above only models upgrading *up*: it adds what it costs to reach the
+target. That silently assumes the upgrade is a neutral transaction — pay the
+money, get the capacity. Under a DDR4 shortage it is not, for two reasons the
+effective price does not capture:
+
+1. **The part may not be there.** DDR4 is end-of-life: no new supply is coming
+   (§parts.yaml). Today's cheapest in-stock 32 GB module is one SKU at one
+   retailer, and two of the four modules surveyed were already unavailable. A
+   machine needing two of them is exposed to that in a way a machine that ships
+   with the memory is not.
+2. **The price is moving one way.** Suppliers are guiding 10–20% per month
+   through end of 2026. `cost_to_reach` prices the upgrade as of the last hand
+   refresh of `parts.yaml`, so it is systematically *low*, and low in the
+   direction that flatters under-specified machines.
+
+So `prefer_shipped_ram_gb: 32` in `rules.yaml` above: a listing already carrying
+32 GB or more is marked in the digest, and where two machines are within the
+noise floor of each other on effective price, the one that ships with the memory
+wins. Deliberately a tiebreaker and a label rather than another dollar term —
+the uncertainty here is about *availability*, which is not a price, and inventing
+a second subjective penalty to sit beside `else_penalty` would double-count the
+same shortage the RAM price already reflects.
+
+This is the one place the plan prefers the machine as listed. It is not a retreat
+to v1's model, which could *only* see the listing; it is the post-upgrade
+comparison plus a thumb on the scale for supply risk.
 
 `fulfillment_adjustment` covers marketplace seller risk; `source_adjustment`
 covers how much recourse a vendor actually offers if the unit is faulty. Both are
@@ -176,8 +279,10 @@ covers how much recourse a vendor actually offers if the unit is faulty. Both ar
 > somewhere I can argue with it. Treat a $15 gap between two effective prices as
 > noise.
 
-Upgrade part costs live in `config/parts.yaml` and get refreshed by hand
-occasionally — they move slowly.
+Upgrade part costs live in `config/parts.yaml`, refreshed by hand. They were
+expected to move slowly; during the 2026 DRAM shortage they are the fastest-moving
+input in the project, and a figure more than a month old is likely low. The file
+carries its own read-this-first note and the date it was priced.
 
 ### Then flag: is this cheap for what it is?
 
@@ -378,8 +483,29 @@ containing it — ten units, all CAD, six of them 8th-gen Intel or newer:
 | Dell OptiPlex 3080 Ultra | i5-10500T | 16 GB | $429.99 |
 | Dell OptiPlex 3080 Ultra | i5-10500T | 32 GB | $549.99 |
 
-The 7070 Micro at $350 lands near $520 effective once it reaches 64 GB, which is
-competitive with anything else in the plan.
+That table omits three older chassis in the same collection — the Lenovo M73
+Tiny, the OptiPlex 9020 Tiny and the ProDesk 600 G3 SFF — which is where the
+16 GB ceiling bites hardest. The 600 G3 is the interesting one: its chassis is
+the only 4-socket machine here and reaches 64 GB, but the unit eTek is selling
+has a 4-core i5-6500T and no NVMe, so it misses on two other requirements and
+ranks last (§9). Chassis capability and listing configuration are different
+things, and this is the listing that separates them.
+
+An earlier draft of this line said the 7070 Micro "lands near $520 effective once
+it reaches 64 GB." It does not: the 7070 caps at 32 GB officially (§5), so it
+never reaches the target at all and instead pays `else_penalty`, landing near
+$795. The estimate assumed both the 64 GB ceiling and the cheap RAM that this
+plan no longer claims.
+
+**Form factor: SFF is in scope.** The collection mixes USFF/Micro machines with
+the occasional SFF one, and the 600 G3 SFF above is the case in point. SFF is a
+larger box than a Micro but not a tower, and for a lab machine that sits
+somewhere and runs, the size difference does not change the job. Since SFF
+chassis take full-size DIMMs and often four of them, they are also
+disproportionately the ones that reach 64 GB — excluding them on form factor
+would exclude the cheapest path to the binding requirement. Towers stay out:
+that is where the line sits, and it is a `rules.yaml` question if it ever needs
+to move.
 
 The reason to prioritise it is structural, not the prices. It runs Shopify,
 so `…/products.json?limit=250` returns title, price, `compare_at_price`, SKU and
@@ -672,7 +798,9 @@ because it is not a fallback for the others but a check to run first:
    scraping and nothing to break silently. eTek is on this path (§3), and it is
    worth checking for on *every* candidate source before writing a selector —
    Shopify is common among Canadian refurbishers, and it turns a source that
-   would cost ongoing maintenance into one that costs almost nothing.
+   would cost ongoing maintenance into one that costs almost nothing. Sources on
+   this tier are fetched directly by `poll.py` and do not go through
+   ChangeDetection at all (§1).
 1. **JSON-LD / schema.org Product / embedded product JSON.** ChangeDetection can
    extract these directly with JSONPath/jq, so this tier often needs no custom
    code at all.
@@ -710,37 +838,48 @@ v1 had no equivalent of this, and it is more important than the CPU table.
 The binding requirement in §2 is *64 GB after upgrade*. Whether a machine can get
 there is a property of the **chassis and its platform**, not of the CPU and not
 of what the retailer shipped: nearly every Tiny/Micro/Mini box is 2 × SODIMM, so
-the ceiling is `2 × (largest SODIMM the platform will accept)`. On these machines
-that is usually 2 × 32 GB = 64 GB from roughly 8th-gen Intel onward, but it is
-2 × 16 GB = 32 GB on several older or lower-tier chassis.
+the ceiling is `2 × (largest SODIMM the platform will accept)`, and that is
+16 GB per slot far more often than expected — see the populated table below.
 
 Under the §2 rules that is not an exclusion — it is a `ram_max_gb` miss carrying
-`else_penalty: 120`, so such a machine still ranks and still appears in the
+`else_penalty: 325`, so such a machine still ranks and still appears in the
 near-miss section. What makes this table load-bearing is that **the shortfall is
 invisible in the listing title**: nothing on the page says the chassis caps at
 32 GB, so without this lookup the penalty is never applied and the machine ranks
 as though it could reach 64 GB. That is a silent pricing error, not a loud one.
 
 ```yaml
-# config/chassis.yaml
-lenovo-m720q:      {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
-lenovo-m920q:      {ram_slots: 2, ram_max_gb: 64, m2_slots: 2, sata: true}
-dell-optiplex-3070-micro: {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
-dell-optiplex-7070-micro: {ram_slots: 2, ram_max_gb: 64, m2_slots: 2, sata: true}
-dell-optiplex-3080-ultra: {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
-hp-prodesk-400-g5-mini:   {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
-hp-elitedesk-800-g4-mini: {ram_slots: 2, ram_max_gb: 64, m2_slots: 2, sata: true}
+# config/chassis.yaml — shape only; the real file carries a source comment per entry
+dell-optiplex-3070-micro: {ram_slots: 2, ram_max_gb: 32, m2_nvme_slots: 1, sata: true}
+dell-optiplex-7070-micro: {ram_slots: 2, ram_max_gb: 32, m2_nvme_slots: 1, sata: true}
+dell-optiplex-3080-ultra: {ram_slots: 2, ram_max_gb: 64, m2_nvme_slots: 1, sata: true}
+hp-elitedesk-800-g4-mini: {ram_slots: 2, ram_max_gb: 32, m2_nvme_slots: 2, sata: true}
+lenovo-m73-tiny:          {ram_slots: 2, ram_max_gb: 16, m2_nvme_slots: 0, sata: true}
 # ...one entry per model that actually appears in the tracked inventory
 ```
 
 Keyed by `brand:model` — the same thing `canonical_key` (§4) already derives, so
-the lookup is free once the title parses. `m2_slots` feeds the NVMe hard
-requirement and the `cost_to_reach(NVMe)` term in the same way.
+the lookup is free once the title parses. `m2_nvme_slots` feeds the NVMe hard
+requirement and the `cost_to_reach(NVMe)` term in the same way. It counts M.2
+sockets that will actually take an NVMe drive, which is not the same as counting
+M.2 connectors: a B-key socket may be SATA-only, and the 2230 Wi-Fi socket never
+counts. Both distinctions cost real entries during the first population.
+
+The values above are the verified ones, and they make a point this section
+originally got wrong. A draft of this table assumed 64 GB was the norm from 8th
+gen onward. It is not: of the nine chassis in eTek's inventory, **two** reach
+64 GB officially. Dell and HP specify the 8th/9th-gen Micro/Mini machines at
+32 GB — 16 GB per slot — and several are reported running 2 × 32 GB anyway, but
+an unofficial ceiling is by construction the one figure that cannot be verified
+from vendor documentation, so it stays in a comment rather than a field. The
+consequence for §2 is that the `else_penalty: 325` path is the common case, not
+the exception: most of the tracked inventory is a near-miss.
 
 Two rules keep it small and honest:
 
 - **Populate it on demand.** One entry per model that shows up in tracked
-  inventory — eTek's ten listings are about seven chassis. Do not pre-fill it.
+  inventory — eTek's ten listings are nine chassis (two share one). Do not
+  pre-fill it.
 - **A missing chassis is `parse_ok = false`, never a default.** Guessing
   `ram_max_gb: 64` for an unknown model would silently pass a machine through the
   one filter that cannot be undone after purchase. Unknown chassis surface in the
@@ -786,27 +925,26 @@ v1 §13's three alert tiers are cut. The digest is the only mode.
 ```text
 🖥️  Mini-PC Digest — Sep 21
 
-  $450 eff.  Dell OptiPlex 7070      eTek         $350 + $60 RAM + $40 source
-             i5-9500T / 16→64GB / 256GB NVMe
+  $915 eff.  Dell OptiPlex 3080 Ultra eTek        $550 + $325 RAM + $40 source
+             i5-10500T / 32→64GB / 256GB NVMe
+             ▸ ships with 32GB — one SODIMM to source, not two
              60d warranty, 30% restocking fee on non-defective returns
 
-  $464 eff.  Lenovo M920q            ITRefurbs    $379 + $60 RAM + $25 vendor
-             i5-9500T / 16→64GB / 512GB NVMe
-             ↓ below 30d median ($429)
+  $965 eff.  HP ProDesk 600 G3 SFF   eTek         $225 + $700 RAM + $40 source
+             i5-6500T / 16→64GB / 120GB SSD   (4 × DIMM, 2 kits)
 
-  $469 eff.  Lenovo M720q            Amazon.ca    $359 + $60 RAM + $50 ship-by-seller
-             i5-8500T / 16→64GB / 512GB NVMe
-             seller: ABC Computers  4.7★ / 1832
-
-  $479 eff.  Dell OptiPlex 7070      Dell Outlet  $479 + $0
-             i7-9700T / 32GB / 512GB NVMe
-             1yr warranty, standard returns
+  $1120 eff. Dell OptiPlex 3080 Ultra eTek        $430 + $650 RAM + $40 source
+             i5-10500T / 16→64GB / 256GB NVMe
 
   ── near misses (1 requirement short) ──
-  $420 eff.  Beelink SER5            eBay         $300 + $120 ram_max 32GB
-             Ryzen 5 5560U / 32GB max / 500GB NVMe
+  $665 eff.  Dell OptiPlex 5060      eTek         $300 + $325 ram_max 32GB + $40
+             i5-8500T / 32GB max / 256GB NVMe
              ✗ ram_max_gb 32 < 64      (lower the bar → ranks 1st)
-             ~street $520 (eBay sold, n=14)
+             ~street $340 (eBay sold, n=14)
+
+  $690 eff.  HP ProDesk 400 G5 Mini  eTek         $325 + $325 ram_max 32GB + $40
+             i5-9500T / 32GB max / 240GB NVMe
+             ✗ ram_max_gb 32 < 64
 
   ── excluded (12) ──────────────────────
   2 no nested virt (gate)
@@ -829,17 +967,30 @@ so tuning is a judgement about a real machine rather than a guess at a threshold
 Note also the `~street` line: a reference price from eBay sold listings, with
 `n=14` shown so a thin sample is visible as such. That is the strongest of the
 four baselines in §2 and is labelled by source, as is the `↓ below 30d median`
-flag on line 2 — the digest never presents a flag without saying where it came
-from, because they differ by an order of magnitude in how much they mean.
+flag — the digest never presents a flag without saying where it came from,
+because they differ by an order of magnitude in how much they mean.
 
-The first two lines are the point of the whole §2 model: eTek's listing is $29
-cheaper than ITRefurbs' but carries a $40 adjustment against ITRefurbs' $25, and
-it *still* wins by $14 — while the reader can see exactly why and disagree by
-editing one number in `sellers.yaml`.
+The `▸ ships with 32GB` marker is `prefer_shipped_ram_gb` (§2). It carries no
+dollars and does not move the ranking; here it explains why a $550 listing beats
+a $225 one — the dearer machine needs one SODIMM, the cheaper needs four DIMMs,
+and at 2026 prices that is the entire difference.
 
-Lines 1 and 4 are both OptiPlex 7070s but in different configurations, so they
-are different canonical keys and correctly appear as separate entries — dedup
-(§9, Phase 3) collapses same-key listings across vendors, not same-model ones.
+Two things in this mock are worth reading as warnings rather than targets.
+
+First, the ranking is now substantially a ranking of *RAM requirements*. A $225
+computer carrying $700 of memory places second. An earlier version of this
+digest showed these machines around $450–480 with `$60 RAM`; that is what a
+fivefold move in one input does to a model that adds real component costs. The
+model is behaving correctly and the market moved underneath it.
+
+Second, and more dangerous: **every near-miss is cheaper than every qualifier.**
+The $665 5060 undercuts the cheapest machine that actually reaches 64 GB by
+$250, and all seven capped machines in eTek's inventory rank below all three
+qualifying ones. That is the flat-`else_penalty` distortion described in §2, and
+it is why the near-miss section is a separate block rather than a tail of the
+main list. Read as one ranking these numbers say "buy the 5060"; read correctly
+they say "the cheapest machine that can do the job is $915, and here is what you
+would save by giving up on 64 GB."
 Instant alerts can be added later if a genuinely time-sensitive deal is ever
 missed.
 
@@ -860,19 +1011,33 @@ mini-pc-price/
 │   ├── parts.yaml          # RAM/NVMe upgrade costs
 │   ├── sellers.yaml        # gates + fulfillment adjustment
 │   └── rules.yaml          # the gate, tunable requirements + penalties (§2)
+├── data/
+│   └── raw/                # persisted fetch responses, by source + timestamp (§1)
 ├── src/
-│   ├── poll.py             # CD API → parse → SQLite
+│   ├── poll.py             # fetch → parse → SQLite
+│   ├── report.py           # SQLite → filter → rank → console (Phase 1, §9)
 │   ├── digest.py           # SQLite → filter → rank → email
 │   ├── specs.py            # title/JSON-LD → normalized specs
-│   ├── cd_client.py        # thin ChangeDetection REST wrapper
+│   ├── cd_client.py        # thin ChangeDetection REST wrapper — Phase 3
 │   └── db.py               # two tables
 ├── tests/
 │   └── test_specs.py       # the parser is what needs tests
 └── README.md
 ```
 
-Five source files. `docker-compose` runs one container (ChangeDetection); the
-tracker is cron + Python.
+Six source files. `docker-compose` runs one container (ChangeDetection); the
+tracker is cron + Python. Neither exists in Phase 1 — tier-0 sources are fetched
+directly and CD arrives with the first HTML source (§1, §9).
+
+`report.py` and `digest.py` share the filter-and-rank step and differ only in
+rendering. `report.py` comes first (Phase 1) and is run by hand; `digest.py`
+arrives in Phase 2 with email. The shared logic belongs in one function they both
+call rather than in whichever was written first — but that extraction happens
+when the second consumer exists, not in anticipation of it.
+
+`data/raw/` is not a cache and nothing reads it in the normal path. It exists so
+a parser bug found on day 10 can be fixed against day 1's bytes without re-
+fetching, and it is git-ignored.
 
 **Run it on the desktop, not on Proxmox.** v1 §19 pictures the finished system
 running on the mini PC — but the mini PC hasn't been bought yet; finding it is the
@@ -896,6 +1061,15 @@ Mitigations, all cheap:
 - **Track per-selector health.** If a selector yields nothing for 3 consecutive
   checks, surface it in the digest (§6).
 - Record `parse_ok` per listing so parser gaps are visible rather than silent.
+- **Treat an empty tier-0 response as a failure, not as zero results.** Shopify
+  answers a wrong or retired collection handle with HTTP 200 and
+  `{"products": []}` — well-formed, successful, and empty, which is exactly what
+  a genuinely sold-out collection returns. Tier 0 removes selector breakage but
+  not this: the handle is the selector. `poll.py` should treat zero products from
+  a source that has previously returned some as a health alert rather than a
+  quiet day. (Found by fetching a guessed handle and briefly concluding eTek's
+  collection had disappeared; the real handle, in `sources.yaml` above, was
+  fine.)
 - **Never default an unknown chassis** (§5). A missing `chassis.yaml` entry means
   the `ram_max_gb` penalty cannot be computed; assuming 64 GB silently ranks a
   machine as better than it is, and unlike a bad ranking that error is only
@@ -910,11 +1084,13 @@ Mitigations, all cheap:
 ### Phase 1 — prove the pipeline (one retailer)
 
 ```text
-eTek products.json → ChangeDetection → poll.py → SQLite → console
+eTek products.json → poll.py → data/raw/ → parse → SQLite → console
 ```
 
-No email. The bar for done: a source yields listings whose specs parse correctly
-into the schema, and prices accumulate across checks.
+No email, and **no ChangeDetection** — eTek is a tier-0 JSON source, so `poll.py`
+fetches it directly and the container is deferred to Phase 3 (§1). The bar for
+done: a source yields listings whose specs parse correctly into the schema, and
+prices accumulate across checks.
 
 Phase 1 is meant to stand alone, and stopping here is a legitimate outcome.
 eTek's collection is ten listings; once they are parsed into the schema with
@@ -948,12 +1124,89 @@ that have nothing to do with the pipeline.** Its Shopify `products.json` (§3, �
 tier 0) is structured data at a stable URL: no selectors to guess at, no page
 restructure to absorb, no anti-bot defenses, and a collection that is entirely
 mini PCs rather than one that must be filtered down to them. When something
-breaks in Phase 1, it should be the code — not the source.
+breaks in Phase 1, it should be the code — not the source, and not the harness
+around it, which is the other half of why CD is deferred (§1).
 
 The cost is that eTek is not the simplest vendor to *reason* about: it carries
 `source_adjustment: 40` and the weakest independent reputation evidence of any
-source kept (§3). That is fine here, because Phase 1 ends at the console and
-buys nothing. The adjustment first matters in Phase 2, where ranking begins.
+source kept (§3). That is fine here, because Phase 1 buys nothing — but the
+adjustment does appear in the Phase 1 output, for the reason given next.
+
+#### What the console prints
+
+`report.py`, run by hand against the SQLite written by `poll.py`. Not a second
+digest implementation: it prints the same ranking §6 describes, minus the email,
+the baselines that need history, and the multi-source sections.
+
+```text
+eTek  ·  10 listings  ·  fetched 2026-09-22 14:05  ·  parse_ok 10/10
+rules.yaml: ram>=64GB(325) cores>=6(80) nvme(40) | parts: SODIMM32 $325
+==============================================================================
+QUALIFIES — meets every requirement (2)
+------------------------------------------------------------------------------
+  $795     Dell OptiPlex 3080 Ultra   $429.99 list  + 325 RAM  + 40 src
+           i5-10500T / 6c / 16->64GB / 256GB NVMe
+  $915     Dell OptiPlex 3080 Ultra   $549.99 list  + 325 RAM  + 40 src
+           i5-10500T / 6c / 32->64GB / 256GB NVMe *ships 32GB
+
+NEAR MISSES — 1+ requirement short (8)
+------------------------------------------------------------------------------
+  $665     Dell OptiPlex 5060 Micro   $299.99 list  + 325 pen  + 40 src
+           i5-8500T / 6c / 16GB / 256GB NVMe   x ram_max 32GB<64
+  ...
+  $1085    HP ProDesk 600 G3 SFF      $224.99 list  + 120 pen  + 40 src
+           i5-6500T / 4c / 16GB / 120GB   x cores 4<6, no NVMe
+==============================================================================
+cheapest qualifier $795 | cheapest near-miss $665 | gap $130
+* = ships >=32GB (prefer_shipped_ram_gb) - no EOL DDR4 to source
+
+warnings
+------------------------------------------------------------------------------
+  ! dell-optiplex-3080-ultra  chassis INFERRED from 3080 Micro - and it
+    is the cheapest qualifier. Confirm before buying.
+  ! parts.yaml priced 2026-09-22; DDR4 is EOL and rising 10-20%/mo.
+```
+
+Five properties, each with a reason:
+
+- **Two sections, never one list.** Qualifiers and near-misses are separated
+  because at `else_penalty: 325` every near-miss undercuts every qualifier (§2),
+  so a single sorted list reads as "buy the cheapest" and recommends a machine
+  that cannot host the lab. The `gap` line states that trade explicitly rather
+  than leaving it to be inferred from the ordering.
+- **The arithmetic is shown, not the result.** `$429.99 list + 325 RAM + 40 src`
+  is the whole argument for a number that would otherwise be unfalsifiable. Every
+  figure in it traces to a line in `rules.yaml` or `parts.yaml`, and the header
+  echoes those settings so the output is self-contained — a printout from last
+  week can be read without guessing which thresholds produced it.
+- **Misses are named individually.** `x cores 4<6, no NVMe` rather than a total.
+  The §2 dial is tuned by seeing *which* requirement is doing the excluding, and
+  a machine short on three counts is a different proposition from one short on
+  RAM ceiling alone.
+- **Every listing appears.** Ten in, ten printed. Phase 1's bar is that specs
+  parse correctly, and a listing silently dropped for failing a filter is
+  indistinguishable from one the parser lost. `parse_ok n/10` in the header is
+  the check; anything with `parse_ok = false` prints in the warnings block with
+  its raw title, since that is the failure Phase 1 exists to surface.
+- **Warnings are not decoration.** Inferred chassis entries, unknown chassis and
+  stale `parts.yaml` dates print at the bottom every run. The first warning above
+  is the real case: the cheapest qualifying machine depends on a chassis entry
+  inferred from a different model (`chassis.yaml`), and that belongs on screen
+  next to the recommendation rather than in a file nobody opens before paying.
+
+**ASCII only, and this is a constraint rather than a preference.** Windows
+consoles default to cp1252, where printing `✗`, `▸`, `↓` or `⚠` raises
+`UnicodeEncodeError` and kills the run — §6's mock digest, written for email,
+would crash outright. Use `x`, `*`, `!` and `->`. The same applies to reading the
+vendor JSON: open it with an explicit `encoding='utf-8'` or listing titles with
+typographic punctuation will fail on the way in.
+
+Writing this output against the real ten listings is also the cheapest possible
+test of §2 and `chassis.yaml`, and it earned its keep immediately: it showed the
+ProDesk 600 G3 SFF — which §3 and `chassis.yaml` both discuss as the cheap route
+to 64 GB — is a 4-core machine with no NVMe, so it fails two *other* requirements
+and never qualifies at all. That was invisible while the RAM ceiling was the only
+field being checked by hand.
 
 **Dell Outlet moves to Phase 3b**, where it fits naturally with the other
 well-structured, zero-adjustment vendors. It remains the better source to
@@ -983,6 +1236,12 @@ Add ITRefurbs — the second of the two independent refurbishers that survived t
 §3 vendor review, eTek being already in from Phase 1. This is the phase where
 cross-vendor comparison starts to matter, so `source_adjustment` needs to be
 applied consistently before these listings compete with each other.
+
+**ChangeDetection lands here**, with `docker-compose.yml` and `cd_client.py`
+(§7). ITRefurbs is the first source that actually needs it — an HTML page with
+selectors to maintain and silent breakage to track (§8) — which is the condition
+§1 defers it on. `poll.py` grows a second fetch path; everything downstream of
+the fetch is unchanged.
 
 Cross-retailer dedup via `canonical_key` (v1 §11, kept in full) becomes
 meaningful with multiple sources:
@@ -1092,3 +1351,19 @@ v1 §12's *premise* is kept too — marketplaces contain good sellers worth
 monitoring, and questionable sellers need explicit handling rather than blanket
 exclusion. Only the mechanism changed, from a scoring function to gates plus a
 dollar adjustment.
+
+### Revised within v2
+
+Changes to v2 itself, kept separate from the v1 comparison above so that table
+stays a record of one revision rather than a running log.
+
+| Was | Now | Reason |
+| --- | --- | --- |
+| All sources through ChangeDetection (§1) | Tier-0 JSON fetched directly; CD from Phase 3 | CD adds nothing to a vendor JSON API but adds four ways for Phase 1 to fail in the harness rather than the parser; the cost — no independent schedule keeping observations flowing — is bought back by persisting raw responses and writing an observation every run (§1) |
+| 64 GB assumed normal from 8th gen on (§5) | 32 GB is normal; 2 of 9 tracked chassis reach 64 GB | Populating `chassis.yaml` against vendor documentation refuted the assumption. §5's own argument survives intact — the ceiling is invisible in the listing — but the penalty it feeds is now the common case rather than the exception, which is a fact about the inventory worth knowing before §2's `else_penalty: 120` is tuned |
+| `m2_slots` (§5) | `m2_nvme_slots` | An M.2 connector is not an NVMe socket: B-key sockets are SATA-only and Wi-Fi 2230 sockets are not storage at all. The old name counted both, and did so wrongly in §5's own example |
+| "RAM is upgradeable and cheap" (§2) | Upgradeable, not cheap | 2 × 32 GB DDR4 SODIMM is ~$650 in Canada as of 2026-09. §2's worked example inverted: the 16 GB machine plus RAM now *loses* to the 32 GB one. The post-upgrade method is unchanged and still right; only its conclusion moved |
+| `ram_max_gb.else_penalty: 120` (§2) | `325` | 120 was set when it was roughly the price of the missing capacity. It now costs ~$325, so the penalty was understating the miss five-fold and charging a permanently-capped chassis less than a capable one paid to actually upgrade |
+| — | `prefer_shipped_ram_gb: 32` (§2) | `cost_to_reach` assumes the upgrade is purchasable at the modelled price; DDR4 is end-of-life with supply vanishing and prices guided up 10–20%/month. A tiebreaker and a digest label rather than a dollar term — availability risk is not a price |
+| SFF form factor an open scope question (§3, `chassis.yaml`) | SFF in scope, towers out | Size does not change the job for a machine that sits and runs, and SFF chassis take four full-size DIMMs — they are disproportionately the ones reaching 64 GB at all |
+| Phase 1 console output unspecified (§9) | Specified: two sections, shown arithmetic, named misses, all listings, warnings, ASCII only | Drafted against the real ten listings rather than described, which immediately caught that the ProDesk 600 G3 SFF fails `cpu_cores` and `storage_nvme` and never qualifies — a conclusion two earlier sections had drawn wrongly from its RAM ceiling alone. ASCII is a hard constraint, not a preference: the cp1252 console raises `UnicodeEncodeError` on §6's digest glyphs |

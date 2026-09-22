@@ -1,2 +1,5 @@
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Persisted fetch responses (plan.md §1) — debugging substrate, not source.
+/data/raw/
