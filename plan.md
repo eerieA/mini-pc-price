@@ -53,10 +53,14 @@ logic. Same boundary as v1 — but the integration is a **pull**, not a webhook.
 
 v1 §4 made ChangeDetection POST to a FastAPI endpoint. Two problems:
 
-1. **The webhook fires on *change*, not on *state*.** Price history needs an
-   observation at every check, including the checks where nothing changed. A
-   "30-day median" built from change events has holes exactly where the price was
-   stable — which is most of the time.
+1. **The webhook fires on *change*, not on *state*.** The observation record is
+   supposed to say what each listing cost at each check, including the checks
+   where nothing moved. Change events give a record with holes exactly where the
+   price was stable — which is most of the time — and every price comparison in
+   §2 reads from that record: the 30-day median most obviously, but also
+   `compare_at_price` (a vendor can revise it without touching the price),
+   `in_stock` transitions, and any later reconstruction of what a listing cost on
+   a given day.
 2. **The payload is unstructured text.** `diff` / `current_snapshot` are text
    blobs; extracting a price from them means owning the parsing anyway, which is
    the thing the boundary was supposed to avoid.
@@ -90,16 +94,50 @@ a handful of listings there is no way to know whether `0.40` or `0.35` on
 HardwareValue is correct — the number is unfalsifiable and un-tunable, and every
 alert it produces is uninterpretable.
 
-The goal is specific enough to express directly.
+### One gate, then tunable requirements
 
-### Hard requirements (fail any → excluded at any price)
+An earlier draft made all four requirements hard exclusions. That was wrong in
+both directions: it treated one genuinely binary constraint and three
+priced preferences as the same kind of thing, and it left no way to adjust the
+bar as real inventory turned out denser or thinner than expected.
 
-| Requirement | Why |
+Only one requirement is truly absolute:
+
+| Gate | Why no price makes it acceptable |
 | --- | --- |
-| RAM ≥ 32 GB *after upgrade* (see below) | The real EVE-NG constraint; 5–6 nodes eats memory |
-| Nested virtualization (VT-x + EPT, or AMD-V + RVI) | EVE-NG runs VMs inside a VM |
-| ≥ 6 cores | 5–6 nodes plus host overhead |
-| NVMe (or an M.2 slot to add one) | Lab boot/snapshot speed |
+| Nested virtualization (VT-x + EPT, or AMD-V + RVI) | EVE-NG runs VMs inside a VM. Without it the machine does not do the job at all. |
+
+The rest are **preferences with a price attached**. A machine that caps at 32 GB
+is not unusable for a 5–6 node lab — it is worse at it, and worth less. Saying
+how much less is exactly what §2 already does for vendor risk, so the same
+mechanism applies:
+
+```yaml
+# config/rules.yaml
+
+gates:                        # fail → excluded at any price
+  nested_virt: true
+
+requirements:                 # fail → penalised, still ranked
+  ram_max_gb:    {min: 64,   else_penalty: 120}
+  cpu_cores:     {min: 6,    else_penalty: 80}
+  storage_nvme:  {min: true, else_penalty: 40}
+
+surface_near_misses: true     # digest section for single-requirement failures
+```
+
+**This is the dial.** If two weeks of data show far more qualifying machines than
+expected, raise `min` — the bar moves and the digest gets shorter. If almost
+nothing qualifies, lower it, or lower the `else_penalty` so near-misses compete
+more readily. `min` changes what counts as good; `else_penalty` changes how much
+the shortfall costs. Both are one-line edits in config, and neither touches code.
+
+An aggressively discounted machine that caps at 32 GB now lands at `price + 120`
+and competes on the same axis as everything else, instead of vanishing from a
+digest that would never explain why.
+
+> **`else_penalty` is the same species of number as `source_adjustment`** — a
+> subjective dollar figure, not a derived one (see the note below).
 
 ### Then rank by effective cost
 
@@ -108,35 +146,95 @@ listing as shipped.**
 
 ```text
 effective_price = listing_price
-                + cost_to_reach(64 GB RAM)
+                + cost_to_reach(64 GB RAM)      -- where the chassis allows it, §5
                 + cost_to_reach(NVMe, if absent)
+                + requirement_penalties         -- unmet requirements, above
                 + fulfillment_adjustment        -- marketplace seller risk, §3
                 + source_adjustment            -- vendor recourse risk, §3
 ```
+
+`cost_to_reach` and `requirement_penalties` are mutually exclusive per
+requirement: if the chassis can reach 64 GB, the listing pays the *real* cost of
+the SODIMMs; if it cannot, it pays `else_penalty` instead. A machine is never
+charged both for an upgrade and for failing to be upgradeable.
 
 RAM is upgradeable and cheap. A 16 GB M920q at $300 plus $60 of DDR4 SODIMM beats
 a 32 GB one at $400. v1 §19 poses exactly this question and the v1 scoring model
 cannot express it, because it scores what the retailer listed. This does.
 
-Both adjustment terms carry risk in the same units as everything else — dollars —
-so listings from a manufacturer outlet, an independent refurbisher and a
-marketplace seller all compare directly on one number. `fulfillment_adjustment`
-covers marketplace seller risk; `source_adjustment` covers how much recourse a
-vendor actually offers if the unit is faulty. Both are `0` for vendors with clean
-warranty and return paths, and both are defined in §3.
+`fulfillment_adjustment` covers marketplace seller risk; `source_adjustment`
+covers how much recourse a vendor actually offers if the unit is faulty. Both are
+`0` for vendors with clean warranty and return paths, and both are defined in §3.
+
+> **What the adjustments are, exactly.** They are **subjective dollar penalties —
+> what I would pay to avoid dealing with that vendor's failure mode — not
+> expected values.** Some are anchored to a published number (eTek's restocking
+> fee), some are pure preference (`seller_fulfilled: 50`); once written down they
+> are the same kind of thing and get added together as such. No claim is made
+> that any of them equals probability × cost, and none has been calibrated
+> against an outcome. Their job is to make "cheaper but riskier" and "dearer but
+> safer" land on one axis so the digest can rank them, and to put the number
+> somewhere I can argue with it. Treat a $15 gap between two effective prices as
+> noise.
 
 Upgrade part costs live in `config/parts.yaml` and get refreshed by hand
 occasionally — they move slowly.
 
-### Then flag
+### Then flag: is this cheap for what it is?
 
-Anything whose current price is below its own 30-day median gets marked in the
-digest. That is the "is this cheap *for this machine*" signal from v1 §10, which
-was the genuinely good idea in the scoring section — kept, without the weights
-around it.
+Ranking by `effective_price` answers "which of these is cheapest." It does not
+answer "is any of them actually a *deal*" — for that the price needs a baseline.
 
-Roughly thirty lines of Python. Every line of an alert is explainable. If this
-proves inadequate after real data exists, add scoring in v3 — with evidence.
+**30-day median of the listing's own history — the weakest, and v1 overrated it.**
+
+v1 §10 called this "where this gets really powerful." It is the one idea from the
+scoring section worth keeping, but it has two problems, and the second is worse
+than the first:
+
+1. *It rarely exists.* It needs 30 days of observations on a listing still in
+   stock, and refurbisher inventory turns over in days to weeks. Many listings
+   disappear before they have a median, and it becomes broadly available around
+   the time the machine has probably already been bought.
+2. *It is self-referential.* It measures a listing against **its own** recent
+   past, so it cannot tell whether the price was ever good. A machine overpriced
+   for a month that drops 10% looks like a deal; one that was correctly cheap the
+   whole time looks like nothing at all.
+
+Keep recording it — observations are free and cannot be backfilled — but it is a
+tiebreaker, not the signal.
+
+**`compare_at_price` — cheap, weak, and worth capturing from Phase 1.**
+
+Shopify returns a vendor "was" price per variant, already present in the tier-0
+JSON (§5) and currently unused. Store it and print it.
+
+It is *marketing*, not a market price: often the MSRP of a long-discontinued SKU,
+sometimes simply inflated to manufacture a discount. It gets no weight in the
+ranking and never gates anything. The reason to capture it in Phase 1 anyway is
+that it costs one nullable column and cannot be recovered later — an observation
+not recorded is gone.
+
+**Street price per `canonical_key` — the one actually wanted, and it arrives with
+eBay.**
+
+The real question is "does this configuration normally sell for $450?" That is a
+property of the *market*, not of one listing or one vendor's marketing, and it is
+what catches a genuinely underpriced machine on its first appearance — no history
+required. eBay sold/completed listings are the honest source, so this lands in
+Phase 4 (§9) with the eBay integration, keyed by `canonical_key`.
+
+Until then, **cross-vendor comparison at a single moment** is the working
+substitute: the same `canonical_key` priced by two vendors today (§9, Phase 3).
+Thinner than a real street price — two vendors are not a market — but it needs no
+history and it fires immediately.
+
+Order of trust, then: street price (Phase 4) > cross-vendor (Phase 3) >
+`compare_at_price` (Phase 1) > 30-day median. The digest shows whichever exist
+and labels which is which, so a flag is never mistaken for more evidence than it
+carries.
+
+If this proves inadequate after real data exists, add scoring in v3 — with
+evidence.
 
 ---
 
@@ -289,8 +387,7 @@ so `…/products.json?limit=250` returns title, price, `compare_at_price`, SKU a
 an `available` boolean per variant. Verified returning valid JSON for all ten
 products. That eliminates the single largest ongoing failure mode in §8 — silent
 selector breakage — for this source entirely, and it reduces `specs.py` to title
-parsing. It is the cheapest integration in the plan by a wide margin, which is
-why §9 makes it the Phase 1 target.
+parsing (§9, Phase 1).
 
 **The return policy is the worst of any vendor kept:**
 
@@ -343,12 +440,12 @@ source_adjustment:            # dollars added to effective_price (§2)
   itrefurbs:        25        # one report of multi-week shipping delays
 ```
 
-eTek's $40 is the restocking fee (~$105 on a $350 unit) weighted by a rough
-one-in-three chance of needing a return on a spec-driven purchase. ITRefurbs' $25
-is a placeholder: roughly what a slow, uncertain RMA is worth avoiding,
-discounted by the odds of needing one. Both keep everything comparable in dollars
-and let a genuinely cheap listing still win — which a blanket exclusion would not
-allow. Neither number has been calibrated against an actual outcome.
+Per the note in §2, these are subjective penalties, not expected values. eTek's
+$40 is anchored to a published number (a 30% restocking fee is ~$105 on a $350
+unit); ITRefurbs' $25 is what a slow, uncertain RMA is worth avoiding. Neither is
+derived and neither has been calibrated. They exist so a genuinely cheap listing
+can still win — which a blanket exclusion would not allow — and so the penalty is
+visible in the digest and editable in one line.
 
 A vendor whose problems are bad enough to be a *gate* rather than a price simply
 does not appear in `sources.yaml`. That is the REFURB.io case. A vendor that is
@@ -360,35 +457,31 @@ third unrelated reason. That is the **openbox.ca** case: checked 2026-09-21 afte
 a positive 18-comment thread, and their entire Windows computer collection is 19
 laptops and 2-in-1s with zero desktops. Their supply is consumer returns — TVs,
 phones, laptops — not corporate lease returns, which is where mini PCs come from.
-A fit exclusion is the cleanest kind, since it does not require weighing
-anecdotes at all. A transcript exists
-(`research/PersonalFinanceCanada-1hqtt0h-openbox.md`) but is not cited here — the
-reputation question never became load-bearing.
+A fit exclusion is the cleanest kind, since it does not require weighing anecdotes
+at all. A transcript exists (`research/PersonalFinanceCanada-1hqtt0h-openbox.md`)
+but is not cited here — the reputation question never became load-bearing.
 
-This leaves **two independent refurbishers**, eTek and ITRefurbs. That is better
-than the one the plan had a moment ago, but it does not overturn the point noted
-in §9: the vendors with the best recourse are concentrated in Phase 3b, and this
-tier is thinner than it first appeared. Both refurbishers kept here carry a
-non-zero `source_adjustment`, which is the pattern, not a coincidence. Two
-searches have now
+This leaves **two independent refurbishers**, eTek and ITRefurbs, both carrying a
+non-zero `source_adjustment` — the pattern, not a coincidence. Two searches
 produced exactly one new viable name, which is itself evidence about the size of
-the pool. The cheap-inventory thesis likely rests on marketplaces (Phase 4)
-rather than on this tier.
+the pool.
 
-> **On sourcing.** The Uniway, REFURB.io and ITRefurbs claims rest on a handful
-> of Reddit comments — small samples, self-selected toward bad experiences, and
-> in REFURB.io's case spanning nine years during which the vendor evidently
-> changed. They are saved under `research/` so any of them can be re-read or
-> challenged, but they are individual reports, not verified fact.
->
-> The eTek and openbox.ca claims rest on something different and weaker in a
-> different way: vendor-published pages (inventory, warranty terms) plus
-> third-party aggregators, checked 2026-09-21, not on saved transcripts. The
-> inventory and policy facts are directly verifiable at the URLs cited and will
-> go stale on their own schedule; the reputation signals are not corroborated.
->
-> Vendor standing shifts. Re-check before a purchase decision rather than
+> **The exclusions are not all equally solid, and the difference matters more
+> than the sentiment does.** Two rest on facts anyone can re-verify at a URL:
+> openbox.ca sells no desktops (fit), and Uniway is consistently above market
+> (price). Those are durable. The other two — REFURB.io's gate, ITRefurbs' $25 —
+> rest on three Reddit comments and one Reddit comment respectively, saved under
+> `research/` so they can be re-read or challenged. That is not a pattern; it is
+> an anecdote with a dollar sign attached, and it is held loosely. The eTek and
+> openbox.ca claims rest on vendor-published pages plus third-party aggregators,
+> checked 2026-09-21, not on transcripts: the inventory and policy facts are
+> verifiable at the URLs cited, the reputation signals are not corroborated.
+> Vendor standing shifts — re-check before a purchase decision rather than
 > trusting a year-old assessment of either kind.
+>
+> **This line of research is closed.** Two searches produced exactly one new
+> viable name, and the marginal thread is worth less than the marginal listing.
+> Re-open only if a specific vendor becomes load-bearing for a specific decision.
 
 URLs and selectors live in config, never in code (v1 §3 was right about this).
 
@@ -397,10 +490,39 @@ are a reasonable Phase 3 addition once the pipeline is proven.
 
 ### Marketplaces belong in, but discovery works differently
 
-Marketplaces (Amazon.ca, Walmart.ca, Best Buy Marketplace) stay — Phase 4.
-Refurbishers price against their own margins; marketplace sellers are often
+Marketplaces (eBay.ca, Amazon.ca, Walmart.ca, Best Buy Marketplace) stay — Phase
+4. Refurbishers price against their own margins; marketplace sellers are often
 liquidators clearing lots, which is where the cheap outliers actually are.
 Cutting them loses the tail that makes this worth building.
+
+**eBay is the correction to the thin-refurbisher finding above, and it was
+missing from v1 entirely.** §3 concluded that two searches produced exactly one
+new viable refurbisher and that the cheap-inventory thesis probably rests on
+marketplaces — eBay is where that inventory actually is. Off-lease corporate
+Tiny/Micro/Mini machines arrive in Canada mostly through liquidators selling on
+eBay, which is precisely the segment this whole plan targets. The Uniway markup
+evidence in §3 makes the point unintentionally: the $120 comparison that showed
+Uniway marked up ~60% was *an eBay listing*.
+
+It is also the easiest marketplace to integrate, which makes its absence from
+both plans the worst kind of omission — most value, least effort:
+
+- The **Browse API** returns structured JSON for a search query: title, price,
+  condition, seller username, feedback score and percentage, shipping and
+  returns. No scraping, no selectors, no anti-bot defenses — the same structural
+  advantage that earned eTek the Phase 1 slot (§5, tier 0), on the source with
+  the most inventory.
+- Seller reputation arrives *as fields*, so the gates in `sellers.yaml` below
+  apply directly with nothing to parse.
+- It needs a free developer account and an OAuth client-credentials token. That
+  is the entire cost, and it is the only source in the plan needing credentials.
+
+The catches are real but bounded: listing titles are keyword-stuffed and
+inconsistent, so tier-3 regex parsing (§5) does more work here than anywhere else
+and `parse_ok = false` will be common at first; condition varies far more than
+with a refurbisher; and auctions are a different purchase mode than the buy-now
+assumption running through §2 — filter to fixed-price listings and treat auctions
+as out of scope. None of that is a reason to defer it behind Amazon.
 
 The real obstacle is **discovery, not value** — these are separate problems and
 should not be conflated:
@@ -513,8 +635,17 @@ id
 listing_id
 observed_at
 price
+compare_at_price     -- vendor "was" price; nullable, weak signal (§2)
 in_stock
 ```
+
+`compare_at_price` sits on `observations` rather than `listings` because vendors
+change it — it is a property of the offer at a moment, like the price itself. It
+is null for any source that does not publish one, which is most of them.
+
+A `reference_prices` table (street price per `canonical_key`, §2) arrives with
+eBay in Phase 4. It is deliberately not here: nothing before Phase 4 can populate
+it honestly, and an empty table invites filling it with guesses.
 
 Everything else from v1 §5 is deferred until it has a consumer:
 
@@ -571,7 +702,55 @@ Normalization target (unchanged from v1 §6):
 
 `ram_slots` and `ram_max_gb` are new, and load-bearing — the upgrade-cost model
 in §2 cannot work without knowing whether the machine can take more memory. They
-come from the CPU/chassis table, not the listing.
+come from the **chassis** table below, not from the listing and not from the CPU.
+
+### Chassis table — the one that actually gates the purchase
+
+v1 had no equivalent of this, and it is more important than the CPU table.
+
+The binding requirement in §2 is *64 GB after upgrade*. Whether a machine can get
+there is a property of the **chassis and its platform**, not of the CPU and not
+of what the retailer shipped: nearly every Tiny/Micro/Mini box is 2 × SODIMM, so
+the ceiling is `2 × (largest SODIMM the platform will accept)`. On these machines
+that is usually 2 × 32 GB = 64 GB from roughly 8th-gen Intel onward, but it is
+2 × 16 GB = 32 GB on several older or lower-tier chassis.
+
+Under the §2 rules that is not an exclusion — it is a `ram_max_gb` miss carrying
+`else_penalty: 120`, so such a machine still ranks and still appears in the
+near-miss section. What makes this table load-bearing is that **the shortfall is
+invisible in the listing title**: nothing on the page says the chassis caps at
+32 GB, so without this lookup the penalty is never applied and the machine ranks
+as though it could reach 64 GB. That is a silent pricing error, not a loud one.
+
+```yaml
+# config/chassis.yaml
+lenovo-m720q:      {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
+lenovo-m920q:      {ram_slots: 2, ram_max_gb: 64, m2_slots: 2, sata: true}
+dell-optiplex-3070-micro: {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
+dell-optiplex-7070-micro: {ram_slots: 2, ram_max_gb: 64, m2_slots: 2, sata: true}
+dell-optiplex-3080-ultra: {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
+hp-prodesk-400-g5-mini:   {ram_slots: 2, ram_max_gb: 64, m2_slots: 1, sata: true}
+hp-elitedesk-800-g4-mini: {ram_slots: 2, ram_max_gb: 64, m2_slots: 2, sata: true}
+# ...one entry per model that actually appears in the tracked inventory
+```
+
+Keyed by `brand:model` — the same thing `canonical_key` (§4) already derives, so
+the lookup is free once the title parses. `m2_slots` feeds the NVMe hard
+requirement and the `cost_to_reach(NVMe)` term in the same way.
+
+Two rules keep it small and honest:
+
+- **Populate it on demand.** One entry per model that shows up in tracked
+  inventory — eTek's ten listings are about seven chassis. Do not pre-fill it.
+- **A missing chassis is `parse_ok = false`, never a default.** Guessing
+  `ram_max_gb: 64` for an unknown model would silently pass a machine through the
+  one filter that cannot be undone after purchase. Unknown chassis surface in the
+  digest (§6) as needing a lookup, and an unresolved one is excluded, not
+  assumed.
+
+Values come from the vendor's own spec sheet or PSREF/QuickSpecs, and each entry
+is worth a one-line source comment — this is the table where being wrong costs
+money rather than a bad ranking.
 
 ### CPU table
 
@@ -589,11 +768,12 @@ ryzen-7-5750ge: {cores: 8, threads: 16, tdp: 35, nested_virt: true}
 # ...~15 total
 ```
 
-`nested_virt` is the field v1 §8 omitted and the one the hard requirement in §2
-actually tests. Note it is nearly always `true` for Intel 8th-gen-and-later and
-Zen 2+ — which is itself a useful finding: it means the *chassis* RAM ceiling,
-not the CPU, is the real constraint. Keep the field anyway to catch the
-exceptions (Celeron/Pentium/Atom-based tiny PCs).
+`nested_virt` is the field v1 §8 omitted and the one the §2 **gate** actually
+tests — the single requirement no price can offset. It is nearly always `true`
+for Intel 8th-gen-and-later and Zen 2+ — which is itself the useful finding:
+**the CPU almost never excludes anything, so this table mostly supplies the core
+count and the chassis table above does the real gating.** Keep `nested_virt`
+anyway to catch the exceptions (Celeron/Pentium/Atom-based tiny PCs).
 
 Expand the table only when a listing appears with a CPU that isn't in it — the
 parser logs that as `parse_ok = false` and it shows up in the digest.
@@ -623,27 +803,46 @@ v1 §13's three alert tiers are cut. The digest is the only mode.
              i7-9700T / 32GB / 512GB NVMe
              1yr warranty, standard returns
 
-  ── excluded (14) ──────────────────────
-  4 under 6 cores · 5 no NVMe slot · 3 RAM ceiling < 64GB
+  ── near misses (1 requirement short) ──
+  $420 eff.  Beelink SER5            eBay         $300 + $120 ram_max 32GB
+             Ryzen 5 5560U / 32GB max / 500GB NVMe
+             ✗ ram_max_gb 32 < 64      (lower the bar → ranks 1st)
+             ~street $520 (eBay sold, n=14)
+
+  ── excluded (12) ──────────────────────
+  2 no nested virt (gate)
   2 seller below gate (rating / reviews)
+  8 ranked above with penalties applied
 
   ⚠  itrefurbs: title selector returned nothing, 3 checks running
+  ⚠  chassis unknown, excluded until looked up: hp-elitedesk-805-g6-mini
 ```
 
 Ranked by effective price, with the delta shown so the arithmetic is visible.
 
+**The near-miss section is what makes the §2 dial usable.** A count of exclusions
+tells you nothing about whether the bar is set right; seeing the $300 Beelink
+that failed *only* on RAM ceiling, with its effective price and what it would
+rank if the bar moved, is the information needed to decide. Note that it would
+rank first at $420 — the line shows exactly what the current setting is costing,
+so tuning is a judgement about a real machine rather than a guess at a threshold.
+
+Note also the `~street` line: a reference price from eBay sold listings, with
+`n=14` shown so a thin sample is visible as such. That is the strongest of the
+four baselines in §2 and is labelled by source, as is the `↓ below 30d median`
+flag on line 2 — the digest never presents a flag without saying where it came
+from, because they differ by an order of magnitude in how much they mean.
+
 The first two lines are the point of the whole §2 model: eTek's listing is $29
 cheaper than ITRefurbs' but carries a $40 adjustment against ITRefurbs' $25, and
 it *still* wins by $14 — while the reader can see exactly why and disagree by
-editing one number in `sellers.yaml`. A weighted score would have produced the
-same ordering with none of that visible.
+editing one number in `sellers.yaml`.
 
 Lines 1 and 4 are both OptiPlex 7070s but in different configurations, so they
 are different canonical keys and correctly appear as separate entries — dedup
 (§9, Phase 3) collapses same-key listings across vendors, not same-model ones.
 Instant alerts can be added later if a genuinely time-sensitive deal is ever
-missed — but a daily digest that gets read beats instant alerts that get ignored,
-which v1 §15 already recognized.
+missed.
 
 **The selector-health warning at the bottom is not decoration.** See §8.
 
@@ -657,10 +856,11 @@ mini-pc-price/
 ├── config/
 │   ├── sources.yaml        # per source: urls + selectors, or a products.json
 │   ├── watch_urls.yaml     # manually seeded product URLs (any retailer)
+│   ├── chassis.yaml        # RAM ceiling + M.2 slots per model — the real gate
 │   ├── cpus.yaml           # ~15 CPUs
 │   ├── parts.yaml          # RAM/NVMe upgrade costs
 │   ├── sellers.yaml        # gates + fulfillment adjustment
-│   └── rules.yaml          # hard requirements, thresholds
+│   └── rules.yaml          # the gate, tunable requirements + penalties (§2)
 ├── src/
 │   ├── poll.py             # CD API → parse → SQLite
 │   ├── digest.py           # SQLite → filter → rank → email
@@ -698,6 +898,12 @@ Mitigations, all cheap:
   checks, surface it in the digest (§6). This one feature is worth more than the
   whole of v1 §9.
 - Record `parse_ok` per listing so parser gaps are visible rather than silent.
+- **Never default an unknown chassis** (§5). A missing `chassis.yaml` entry means
+  the `ram_max_gb` penalty cannot be computed; assuming 64 GB silently ranks a
+  machine as better than it is, and unlike a bad ranking that error is only
+  discovered after the box is open. Unknown chassis are held out of the ranking
+  and listed in the digest for a manual lookup — the one place the plan prefers a
+  gap in the output to a confident guess.
 
 ---
 
@@ -711,6 +917,33 @@ eTek products.json → ChangeDetection → poll.py → SQLite → console
 
 No email. The bar for done: a source yields listings whose specs parse correctly
 into the schema, and prices accumulate across checks.
+
+**Phase 1 is meant to stand alone, and stopping here is a legitimate outcome.**
+eTek's collection is ten listings; once they are parsed into the schema with
+`effective_price` computable by hand from the same numbers, the buying decision
+may simply be answerable by reading the table. Everything from Phase 2 on exists
+to widen the search and to remove the manual step, not to make the decision
+possible. Build Phase 1, look at the data, then decide whether Phase 2 is still
+worth it.
+
+Build `config/chassis.yaml` (§5) here rather than deferring it — the ten eTek
+listings are about seven chassis, the RAM ceiling is the requirement that
+actually excludes machines, and it is the one table where a wrong entry costs
+money. A handful of PSREF/QuickSpecs lookups is most of Phase 1's manual work,
+and it is the part that pays off immediately even if nothing else gets built.
+
+Two more things belong in Phase 1 for the same reason — they are nearly free
+*now* and expensive or impossible later:
+
+- **`config/rules.yaml` (§2)** — the gate, the tunable requirements and their
+  penalties. Reading thresholds from a file instead of hardcoding them is an
+  afternoon; retrofitting it means editing a filter that already works. The dial
+  is also most useful early, when there is no intuition yet for how dense real
+  inventory is.
+- **`compare_at_price` (§2, §4)** — one nullable column, populated straight from
+  the tier-0 JSON. Weak signal, near-zero cost, and **unbackfillable**: an
+  observation not recorded when the page was fetched is gone for good. That
+  asymmetry is the whole argument for capturing it now.
 
 **eTek is the Phase 1 target because it is the least likely to fail for reasons
 that have nothing to do with the pipeline.** Its Shopify `products.json` (§3, §5
@@ -737,8 +970,14 @@ the fallback whenever discovery breaks on a source.
 
 ### Phase 2 — the digest
 
-`digest.py`, hard-requirement filter, effective-price ranking, 30-day median
-flag, Gmail via app password. Now it is useful.
+`digest.py`, the §2 filter (gate, then requirements with penalties),
+effective-price ranking, the near-miss section, available baseline flags, Gmail
+via app password. Now it is useful.
+
+**The near-miss section (§6) is part of Phase 2, not a later polish.** It is what
+makes `rules.yaml` tunable in practice: without seeing the machines that just
+missed — and what they would rank if the bar moved — adjusting a threshold is
+guesswork. It is also a few lines, since those listings are already scored.
 
 ### Phase 3 — refurbishers + dedup
 
@@ -769,25 +1008,36 @@ best vendor in the plan to actually buy from, and its JSON-LD should make it the
 easiest of the group.
 
 These all have `source_adjustment: 0` — physical locations or manufacturer
-warranties mean returns are tractable. Worth noting that the sources with the
-best recourse are concentrated in *this* phase, while the cheapest inventory sits
-in Phase 3 and Phase 4. That tension is the whole reason `effective_price`
-carries an adjustment term.
+warranties mean returns are tractable. The best recourse is concentrated in
+*this* phase and the cheapest inventory in Phases 3 and 4 (§3).
 
 ### Phase 4 — marketplaces
 
-In rough order of effort:
+In rough order of value-per-unit-effort:
 
-1. **Best Buy Marketplace** — nearly free once Best Buy direct is parsed in
-   Phase 3b; marketplace items share the product-page structure. Add the seller
-   gates and `fulfillment_adjustment` from §3 here.
-2. **Walmart.ca** — moderate.
-3. **Amazon.ca** — via platform-native alerting (watchlist / camelcamelcamel)
+1. **eBay.ca** — first, and arguably the highest-value phase in the plan after
+   Phase 2. Browse API: structured JSON, seller reputation as fields, no
+   scraping. Fixed-price listings only. This is where the cheap off-lease
+   inventory actually lives (§3), and it is the source the refurbisher tier was
+   a weak substitute for. Add the seller gates and `fulfillment_adjustment` here.
+
+   **This phase also delivers the reference price (§2)** — the baseline the plan
+   has wanted since Phase 1 and could not honestly produce. Sold/completed
+   listings give what a `canonical_key` actually transacts at, which is the only
+   signal that identifies an underpriced machine on its *first* appearance, with
+   no history and no second vendor needed. Add `reference_prices` (§4) here,
+   keyed by `canonical_key`, storing the median, the sample size and the window;
+   the digest shows `n` so a thin sample is visibly thin. Two features, one
+   integration — which is most of why eBay leads this phase.
+2. **Best Buy Marketplace** — nearly free once Best Buy direct is parsed in
+   Phase 3b; marketplace items share the product-page structure.
+3. **Walmart.ca** — moderate.
+4. **Amazon.ca** — via platform-native alerting (watchlist / camelcamelcamel)
    feeding `watch_urls.yaml`, *not* by scraping search pages.
 
-The seller columns already exist in the schema, and `effective_price` already has
-the fulfillment term, so this phase adds config and a gate check — not a
-subsystem.
+If only one item in this phase ever gets built, build eBay. If the schedule
+slips, eBay is the one worth pulling *forward* — ahead of Phase 3b's direct
+retailers, whose inventory is well-priced but rarely cheap.
 
 Realistically, the machine may well have been bought before all of this lands.
 That is a successful outcome, not an abandoned project — and manual seeding
@@ -799,7 +1049,7 @@ That is a successful outcome, not an abandoned project — and manual seeding
 
 | v1 | v2 | Reason |
 | --- | --- | --- |
-| Webhook push (§4) | REST poll | Webhooks fire on change; history needs every observation |
+| Webhook push (§4) | REST poll | Webhooks fire on change; a gap-free observation log is the substrate for every §2 comparison, and cannot be backfilled |
 | FastAPI service (§16) | Two cron scripts | Nothing left to serve once pull-based |
 | Weighted deal score (§9) | Hard filter + effective price | Unfalsifiable weights vs. explainable rules |
 | Score as-listed | Score post-upgrade cost | RAM is cheap and upgradeable; this is the real comparison |
@@ -807,6 +1057,13 @@ That is a successful outcome, not an abandoned project — and manual seeding
 | Uniway as Phase 1 target | Excluded entirely | Legitimate but consistently marked up — a bad *source*, not a bad vendor |
 | REFURB.io as a Phase 3 source | Excluded (gate) | Fulfillment and refund failures 2022+; the positive reports are from 2017 |
 | — | eTek added (Phase 1) | Shopify `products.json`; collection is entirely mini PCs |
+| — | eBay.ca added (Phase 4, first) | Absent from v1; Browse API is structured, and it holds the off-lease inventory the refurbisher tier was a thin substitute for |
+| — | `chassis.yaml` (§5) | The 64 GB ceiling is a chassis property and the one requirement that is invisible in a listing; v1 had nowhere to put it |
+| — | One gate + tunable requirements (§2) | Only nested virt is truly binary; the rest are preferences with a price, and the bar needs to move as real inventory density becomes known |
+| — | Near-miss section in the digest (§6) | Exclusion *counts* cannot tell you whether the bar is set right; the machine that just missed can |
+| — | `compare_at_price` captured (§2, §4) | Weak signal, one column, and unbackfillable — an unrecorded observation is gone |
+| — | Street price from eBay sold listings (§2, Phase 4) | The only baseline that identifies an underpriced machine on first sighting |
+| Historical median as the key signal (§10) | Demoted to a tiebreaker | Not just sparse — self-referential: it cannot tell whether a price was ever good |
 | — | Parser tier 0: vendor product JSON | Removes selector breakage entirely where it applies |
 | Refurbisher trust as a constant (§3) | `source_adjustment` in dollars | "Legit but slow support" is a price, not a gate |
 | Marketplace search scraping (§3) | Manual seeding + platform alerts | Value was never the issue; search-page scraping is |
@@ -816,15 +1073,22 @@ That is a successful outcome, not an abandoned project — and manual seeding
 | 3 alert tiers (§13) | Daily digest only | A digest that gets read beats alerts that get ignored |
 | Deploy on Proxmox (§19) | Run on desktop | The mini PC doesn't exist yet |
 | — | Selector health tracking | Silent breakage is the real failure mode |
+| Phase 1 as a stepping stone (§17) | Phase 1 as a standalone deliverable | Ten parsed listings may answer the buying question on their own |
+| Vendor research open-ended (§3) | Closed | Two searches produced one new viable name; durable exclusions separated from anecdotal ones |
 
 ### Kept from v1, unchanged
 
 The CD/custom-code boundary (§1), SQLite over Postgres (§5), hardware
 normalization (§6), the parser hierarchy (§7, with a tier added above it),
 canonical product keys
-and dedup (§11), historical median comparison (§10), digest-over-alerts (§15),
-config-not-code for retailer specifics (§3), start-with-one-retailer phasing
-(§17), and no search engine (§18).
+and dedup (§11), digest-over-alerts (§15), config-not-code for retailer
+specifics (§3), start-with-one-retailer phasing (§17), and no search engine
+(§18).
+
+v1 §10's historical median is kept but **demoted** — recorded from Phase 1, shown
+when it exists, and no longer the primary "is this cheap" signal. v1's underlying
+question was the right one; it just picked the weakest of the four available
+answers (§2).
 
 v1 §12's *premise* is kept too — marketplaces contain good sellers worth
 monitoring, and questionable sellers need explicit handling rather than blanket
