@@ -13,3 +13,9 @@
 
 __pycache__/
 .pytest_cache/
+
+# Local secrets for digest.py (plan.md §6). The Gmail app password lives here
+# when testing by hand, so this file must never be committed -- that is the
+# whole reason the credentials are not in config/*.yaml. .env.example is the
+# committed template and holds no real values.
+.env

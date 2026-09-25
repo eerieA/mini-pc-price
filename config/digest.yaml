@@ -1,0 +1,44 @@
+# Where the daily digest goes (plan.md §6, Phase 2).
+#
+# NO SECRETS IN THIS FILE. It is committed, like every other config/*.yaml.
+# The Gmail app password and the account it belongs to are read from the
+# environment, and digest.py refuses to run rather than guess:
+#
+#   MINIPC_SMTP_USER   the Gmail address that authenticates
+#   MINIPC_SMTP_PASS   a Google App Password, not the account password
+#   MINIPC_DIGEST_TO   overrides `to` below, if set
+#
+# PowerShell, for one run:
+#   $env:MINIPC_SMTP_USER = "you@gmail.com"
+#   $env:MINIPC_SMTP_PASS = "xxxx xxxx xxxx xxxx"
+#   python src/digest.py
+#
+# To persist for scheduled runs, set them as user environment variables
+# (System Properties > Environment Variables, or `setx`), not in a script that
+# lands in the repo.
+
+to: null                  # null means "read MINIPC_DIGEST_TO"; set a literal
+                          # address here if you prefer it committed -- your own
+                          # address is not a secret, it is just not in git yet.
+subject: "Mini-PC digest"  # the date is appended at send time
+
+smtp:
+  host: smtp.gmail.com
+  port: 587               # STARTTLS. 465 would be implicit TLS, which this
+                          # code does not do -- one path, tested, not two.
+
+# ── Why an app password and not OAuth ────────────────────────────────────────
+# OAuth would avoid a long-lived credential, but it needs a browser consent
+# flow, a client secret of its own and a token to refresh. That is a service,
+# and §1 is explicit that this project is two cron scripts and no service. An
+# app password is one environment variable and is revocable from the Google
+# account page, which is the right trade for a single-user tool.
+#
+# Requires 2-Step Verification on the Google account; app passwords are issued
+# at https://myaccount.google.com/apppasswords .
+
+# ── Sending is the one step that is not idempotent ───────────────────────────
+# poll.py can run twice with no consequence beyond a duplicate observation, and
+# report.py has none at all. An email cannot be unsent, so digest.py prints what
+# it would send and exits when --dry-run is passed, and that is the flag to use
+# while changing anything here.

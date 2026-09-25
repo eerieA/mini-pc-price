@@ -1182,8 +1182,10 @@ mini-pc-price/
 │   └── raw/                # persisted fetch responses, by source + timestamp (§1)
 ├── src/
 │   ├── poll.py             # fetch → parse → SQLite
-│   ├── report.py           # SQLite → filter → rank → console (Phase 1, §9)
-│   ├── digest.py           # SQLite → filter → rank → email
+│   ├── ranking.py          # the shared filter-and-rank step (§2)
+│   ├── dotenv_lite.py      # reads a git-ignored .env; real env wins (§6)
+│   ├── report.py           # ranking → console (Phase 1, §9)
+│   ├── digest.py           # ranking → email (Phase 2)
 │   ├── specs.py            # title/JSON-LD → normalized specs
 │   ├── cd_client.py        # thin ChangeDetection REST wrapper — Phase 3
 │   └── db.py               # two tables
@@ -1201,6 +1203,17 @@ rendering. `report.py` comes first (Phase 1) and is run by hand; `digest.py`
 arrives in Phase 2 with email. The shared logic belongs in one function they both
 call rather than in whichever was written first — but that extraction happens
 when the second consumer exists, not in anticipation of it.
+
+That extraction happened in Phase 2, and it went further than "one function":
+`ranking.py` holds `load_config`, `ram_upgrade_cost`, `score`, `gated`, `rank`
+and `split`, leaving `report.py` with rendering only. The test that it was
+behaviour-preserving is that `report.py`'s output was byte-identical before and
+after — worth doing, because a refactor that quietly changes a price is the kind
+this project can least afford.
+
+`digest.py` does not re-render the ranking. Its body *is* `report.build_report`'s
+output, so there is one rendering with two destinations rather than two
+renderings that drift until the unread one is wrong.
 
 `data/raw/` is not a cache and nothing reads it in the normal path. It exists so
 a parser bug found on day 10 can be fixed against day 1's bytes without re-
@@ -1472,6 +1485,32 @@ The near-miss section (§6) is part of Phase 2, not a later polish. It is what
 makes `rules.yaml` tunable in practice: without seeing the machines that just
 missed — and what they would rank if the bar moved — adjusting a threshold is
 guesswork. It is also a few lines, since those listings are already scored.
+
+**What §6's mock shows that Phase 2 does not send.** Three features in that mock
+need data no phase before them produces, and a digest with placeholder rows is
+worse than one without them:
+
+- `~street $340 (eBay sold, n=14)` — the reference price, Phase 4.
+- `↓ below 30d median` — needs an observation history that does not exist on a
+  database a few days old.
+- the selector-health warning — Phase 3, with the first HTML source.
+
+The `(lower the bar → ranks 1st)` annotation is the one that needs no new data,
+only re-scoring with a requirement relaxed. It is deferred anyway, because with
+two qualifying machines the bar is currently answering the question it was meant
+to answer; it earns its place when tuning is actually in question.
+
+The secret handling is worth stating once: the Gmail app password is read from
+`MINIPC_SMTP_PASS` in the environment, never from `config/*.yaml`, because those
+files are committed. A git-ignored `.env` is loaded for local testing, with
+`.env.example` as the committed template — and the real environment always wins
+over it, because a stale `.env` silently beating a scheduled task's variables is
+an invisible failure (the digest sends from the wrong account, or not at all,
+with nothing pointing at the file). `digest.py` exits naming the unset variable rather than
+letting Gmail answer with a generic authentication failure, and `--dry-run`
+deliberately resolves the recipient but *not* the credentials — the machine
+someone debugs the output on is the machine least likely to have the password
+set.
 
 ### Phase 3 — refurbishers + dedup
 

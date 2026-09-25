@@ -32,13 +32,36 @@ known. See `plan.md` §2.
 ```sh
 pip install requests pyyaml pytest    # Python 3.11+; developed on 3.14
 python src/poll.py                    # fetch -> parse -> SQLite
-python src/report.py                  # SQLite -> filter -> rank -> console
+python src/report.py                  # ranking -> console
+python src/digest.py --dry-run        # ranking -> email, without sending
 pytest -q
 ```
 
 `poll.py` is safe to run as often as you like and is meant for a cron entry;
-`report.py` reads whatever has been collected and prints. Neither takes
-arguments.
+`report.py` reads whatever has been collected and prints.
+
+`digest.py` emails the same output. It needs three environment variables, kept
+out of `config/*.yaml` because those are committed:
+
+```sh
+MINIPC_SMTP_USER   the Gmail address that authenticates
+MINIPC_SMTP_PASS   a Google App Password (not the account password)
+MINIPC_DIGEST_TO   where the digest goes
+```
+
+For local testing, copy `.env.example` to `.env` and fill it in — `digest.py`
+reads it automatically:
+
+```sh
+cp .env.example .env
+```
+
+`.env` is git-ignored and `.env.example` holds only placeholders. **Real
+environment variables win over `.env`**, so a stale file in the working
+directory cannot quietly override a scheduled task that sets them properly.
+
+Sending is the only irreversible step here, so `--dry-run` prints the message
+and sends nothing. It works without credentials set.
 
 ## Reading the report
 
@@ -87,6 +110,8 @@ Thresholds, penalties, vendor adjustments and hardware facts live in
 | `chassis_aliases.yaml` | Brand + model number → chassis key |
 | `cpus.yaml` | Cores, threads and `nested_virt` per CPU |
 | `parts.yaml` | RAM and NVMe upgrade costs, with the date they were priced |
+| `listing_overrides.yaml` | Vendor-confirmed facts a listing page does not state |
+| `digest.yaml` | Where the daily email goes (no secrets) |
 
 Two config rules worth knowing before editing:
 
