@@ -75,12 +75,23 @@ def format_listing(listing, price, terms, misses, rules):
     return lines
 
 
-def build_report(listings, config):
+def build_report(listings, config, ranked=None):
+    """Render the ranking. Pass `ranked` to reuse a ranking already computed.
+
+    ranking.rank() applies overrides by mutating the listing dicts, so calling
+    it twice on the same objects makes the second call see a value the first
+    wrote and report the override as redundant. Callers that need the ranking
+    for their own purposes (digest.py, to decide whether anything changed) pass
+    it in rather than ranking a second time.
+    """
     rules = config["rules"]
     parts = config["parts"]
     out = []
 
-    ranked, unparsed, excluded = ranking.rank(listings, config)
+    if ranked is None:
+        ranked, unparsed, excluded = ranking.rank(listings, config)
+    else:
+        ranked, unparsed, excluded = ranked
     qualifiers, near_misses = ranking.split(ranked)
 
     source = listings[0]["source_id"] if listings else "none"

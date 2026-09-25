@@ -43,15 +43,42 @@ logic. Same boundary as v1 — but the integration is a **pull**, not a webhook.
   │  write observations → SQLite                       │
   └───────────────────────┬────────────────────────────┘
                           │
-                          │  digest.py, daily 08:00
+                          │  digest.py, daily
                           ▼
   ┌────────────────────────────────┐
-  │  filter → rank → one email     │
+  │  filter → rank → one email     │  only when something moved
   └────────────────────────────────┘
 ```
 
 Two fetch paths, one parser. Which one a source uses is a property of the source,
 not a second architecture — see below.
+
+### Where it runs: CI, not the desktop (revised 2026-09-25)
+
+Phase 2 scheduled this on the desktop with Task Scheduler, on the reasoning in
+§7 that deployment is a post-purchase problem. That reasoning held while the
+project was expected to end in days. It does not hold for a months-long run,
+and the thing that breaks it is §1's own premise: **an observation cannot be
+backfilled.** A desktop asleep at the scheduled hour does not poll late, it
+loses the day, and the price history is precisely what a long run accumulates.
+
+So the poll and the digest run in GitHub Actions
+(`.github/workflows/daily.yml`), which commits `data/tracker.db` back to the
+repository. The repo stays the single copy of the history: `git pull`, and the
+local report, digest and chart read the same database they always read. No sync
+protocol, no second store, no server.
+
+This does not reopen the FastAPI question §1 settled. There is still no service,
+nothing listening, and no request handling — it is the same two scripts on a
+different clock. What changed is only which machine owns the clock, and the
+reason is the one §1 already cared most about.
+
+The costs, stated plainly: the Gmail app password now lives in GitHub's secret
+store rather than on one desktop; the database is a binary file in git, so each
+daily commit stores a fresh copy rather than a delta (28 KB today, and the fix
+if it ever matters is to commit observations as CSV and rebuild); and GitHub
+disables scheduled workflows after 60 days of repository inactivity. The last of
+those is why the digest reports poll coverage — see §8.
 
 ### Why pull instead of the webhook
 
@@ -1073,9 +1100,28 @@ parser logs that as `parse_ok = false` and it shows up in the digest.
 
 ---
 
-## 6. Output: one email a day
+## 6. Output: one email, when something moved
 
-v1 §13's three alert tiers are cut. The digest is the only mode.
+v1's three alert tiers are cut. The digest is the only mode.
+
+**Revised 2026-09-25: the digest sends on change, not on a schedule.** Daily mail
+about ten SKUs whose prices sit still for weeks is the same failure this section
+already names for empty digests — it trains its one reader to stop opening it.
+So the poll stays daily, because history cannot be backfilled, and the *send* is
+gated on a listing's price moving, appearing, vanishing, changing stock, or
+crossing the qualification line (`src/changes.py`).
+
+"Moved" is defined on **list price and qualification, never effective price.**
+Effective price also moves when `rules.yaml` or `parts.yaml` is edited, and a
+digest arriving because you tuned a penalty is a digest about your own
+keystrokes. Tuning is done while looking at the report.
+
+Every digest now opens with what changed since the last one, above the ranking,
+because that delta is why this email exists today rather than yesterday. The
+state it compares against lives in the database rather than a file, since the
+database is what CI commits and what you pull back (§1).
+
+The one thing that must not be gated this way is failure — see §8.
 
 ```text
 🖥️  Mini-PC Digest — Sep 21
@@ -1187,17 +1233,24 @@ mini-pc-price/
 │   ├── dotenv_lite.py      # reads a git-ignored .env; real env wins (§6)
 │   ├── report.py           # ranking → console (Phase 1, §9)
 │   ├── digest.py           # ranking → email (Phase 2)
+│   ├── changes.py          # what moved since the last digest (§6)
+│   ├── coverage.py         # did the poll actually run (§8)
+│   ├── chart.py            # price history → self-contained chart.html (§6)
 │   ├── specs.py            # title/JSON-LD → normalized specs
 │   ├── cd_client.py        # thin ChangeDetection REST wrapper — Phase 3
-│   └── db.py               # two tables
+│   └── db.py               # two tables, plus digest_state (§6)
+├── scripts/                # local Windows scheduling; CI is the normal path (§1)
+├── .github/workflows/
+│   └── daily.yml           # poll → digest → commit the history back (§1)
 ├── tests/
 │   └── test_specs.py       # the parser is what needs tests
 └── README.md
 ```
 
-Six source files. `docker-compose` runs one container (ChangeDetection); the
-tracker is cron + Python. Neither exists in Phase 1 — tier-0 sources are fetched
-directly and CD arrives with the first HTML source (§1, §9).
+A handful of source files, none of them a framework. `docker-compose` runs one
+container (ChangeDetection); the tracker is a scheduler plus Python. Neither
+exists in Phase 1 — tier-0 sources are fetched directly and CD arrives with the
+first HTML source (§1, §9).
 
 `report.py` and `digest.py` share the filter-and-rank step and differ only in
 rendering. `report.py` comes first (Phase 1) and is run by hand; `digest.py`
@@ -1246,6 +1299,27 @@ entire point. Deployment is a post-purchase problem.
 ## 8. Risk the v1 plan didn't name
 
 Selector breakage is the main ongoing cost, not the domain logic.
+
+**A change-gated digest sharpens this considerably (added 2026-09-25).** Once
+mail only arrives when something moved (§6), a tracker that has stopped working
+produces exactly what a quiet market produces: nothing. The two are
+indistinguishable from the inbox, and the failure is invisible for as long as
+you are willing to believe prices are flat.
+
+So every digest carries a poll-coverage line — `polled 26 of the last 30 days` —
+and a poll silent for three days sends the digest *regardless* of whether
+anything changed. That AND is the load-bearing part: suppressing on "nothing
+changed" alone would go quiet exactly when nothing is being fetched, because
+nothing that is not fetched can change.
+
+Coverage is computed from the observation log, never from a success flag written
+by the poller. A poller that dies before writing has no opinion about whether it
+ran; the observations either exist or they do not.
+
+Running in CI (§1) adds two failure modes this catches: GitHub disables
+scheduled workflows after 60 days of repository inactivity, and its cron is
+explicitly best-effort — late under load, occasionally skipped. Neither announces
+itself. Both appear as gaps in the coverage line.
 
 Retailers restructure pages without warning. A selector that silently returns
 nothing looks exactly like "no new products" — the system goes quiet and appears
@@ -1681,3 +1755,8 @@ stays a record of one revision rather than a running log.
 | Storage interface assumed parseable (§2, §5, §6, §9) | Unstated by this source; `storage_nvme` unmet on every listing | `NVMe`, `M.2`, `SATA` and `PCIe` appear zero times across all ten titles and all ten descriptions — eTek says only "SSD". The mocks in §6 and §9 printed `256GB NVMe`, which was assumed, not read. Every listing now pays the flat `nvme(40)` and prints `nvme unknown`. Deliberately *not* recovered from `chassis.yaml`'s `m2_nvme_slots`: that would assert a fact about the unit for sale from a fact about the model, the same conflation that produced the 600 G3 error above |
 | Two qualifiers expected in Phase 1 (§6, §9) | Zero; ten near-misses | Consequence of the storage row above: `storage_nvme` is unmet on every listing, so nothing clears every requirement. The closest is the $549.99 3080 Micro, which ships 32 GB, reaches 64 GB on one more SODIMM, and misses on nothing but the unstated interface. The mocks are now the real output, and the format has to read well with an empty qualifier section, because on real data that is the case it is in |
 | Chassis key "free once the title parses", derived from `canonical_key` (§5) | An explicit `(brand, model_number)` alias table (`chassis_aliases.yaml`) | `canonical_key` has no form-factor segment and cannot produce one. Worse, the form factor cannot be read from this vendor's text at all — the 9020's description contains `tiny`, `micro`, `sff`, `usff`, `ultra` and `small form factor` simultaneously. Brand plus model number is unambiguous (nine values, nine chassis) and survives eTek spelling the product "Optiflex" |
+| Desktop Task Scheduler (§9, Phase 2) | GitHub Actions, committing the database back (§1) | A months-long run changes the calculus that put this on the desktop. An observation cannot be backfilled, and a sleeping desktop loses the day rather than polling late. Not a return to the FastAPI question §1 settled: no service, nothing listening, the same two scripts on a different clock. Costs stated in §1 -- the app password moves to GitHub's secret store, and the SQLite file is a binary in git |
+| Digest sends daily (§6) | Sends only when something moved, or the poll went quiet (§6, §8) | Ten SKUs that sit still for weeks produce identical daily mail, which is the same thing §6 already refuses for empty digests. Gated on list price and qualification, never effective price -- the latter moves when you edit `rules.yaml`, and a digest about your own keystrokes is noise |
+| -- | Poll coverage in every digest (§8) | The cost of the row above: once mail only arrives on change, a dead tracker and a quiet market look identical. Coverage is read from the observation log rather than a success flag, and three silent days send the digest regardless of change |
+| -- | `chart.py`, on demand (§6) | "Is this price unusual for this machine" is a question asked while deciding, not every morning. Self-contained HTML with the data inlined: no CDN, no matplotlib, nothing to break later |
+| Dependencies listed in the README only | `requirements.txt` | CI needs a declared install, which is the consumer the file was previously waiting for |

@@ -96,3 +96,21 @@ def test_empty_database_produces_no_send(env):
     """Nothing to report is not an empty email. A digest that arrives saying
     nothing trains the reader to ignore it."""
     assert digest.body_for([], {}) is None
+
+
+def test_a_dead_poll_sends_even_when_nothing_changed():
+    """The interaction that matters once sending is change-gated.
+
+    When the poll has stopped, nothing CAN change -- so a suppression rule that
+    only asks "did anything move" would go quiet exactly when the tracker has
+    died. digest.main() suppresses only when the diff is empty AND coverage is
+    healthy; this pins the AND (plan.md §8).
+    """
+    import changes
+    healthy = {"alert": False}
+    dead = {"alert": True}
+    no_movement = {"price": [], "appeared": [], "disappeared": [],
+                   "qualified": [], "unqualified": [], "stock": []}
+
+    assert changes.is_empty(no_movement) and not healthy["alert"]
+    assert not (changes.is_empty(no_movement) and not dead["alert"])

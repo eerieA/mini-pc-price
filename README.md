@@ -30,15 +30,21 @@ known. See `plan.md` §2.
 ## Running it
 
 ```sh
-pip install requests pyyaml pytest    # Python 3.11+; developed on 3.14
+pip install -r requirements.txt       # Python 3.11+; developed on 3.14
 python src/poll.py                    # fetch -> parse -> SQLite
 python src/report.py                  # ranking -> console
 python src/digest.py --dry-run        # ranking -> email, without sending
+python src/chart.py --open            # price history -> chart.html
 pytest -q
 ```
 
-`poll.py` is safe to run as often as you like and is meant for a cron entry;
-`report.py` reads whatever has been collected and prints.
+**The daily run happens in GitHub Actions, not here** — see below. These commands
+are for running it by hand against whatever the last poll collected.
+
+`poll.py` is safe to run as often as you like; `report.py` reads whatever has
+been collected and prints. `chart.py` writes a self-contained `chart.html` with
+one line per listing — on demand, because "is this price unusual" is a question
+you ask while deciding, not every morning.
 
 `digest.py` emails the same output. It needs three environment variables, kept
 out of `config/*.yaml` because those are committed:
@@ -65,28 +71,44 @@ and sends nothing. It works without credentials set.
 
 ### Running it daily
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
-powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1 -At 07:30
+`.github/workflows/daily.yml` polls at 12:00 UTC, sends the digest if anything
+moved, and commits the updated `data/tracker.db` back to the repo. `git pull`
+and the local report and chart read the same history.
+
+It runs in CI rather than on a desktop for one reason: **an observation cannot
+be backfilled.** A machine asleep at the scheduled hour simply loses that day,
+and the price history is the thing a months-long run is accumulating.
+
+Three repository secrets are required (Settings → Secrets and variables →
+Actions):
+
+```
+MINIPC_SMTP_USER   the Gmail address that authenticates
+MINIPC_SMTP_PASS   a Google App Password
+MINIPC_DIGEST_TO   where the digest goes
 ```
 
-Registers a Task Scheduler entry that polls and then sends, every morning at
-08:00 by default. Re-run it to change the time. It runs as you, without elevation
-— it needs none, and it must be the account that owns `.env`.
+**The digest only sends when something moved** — a price changed, a listing
+appeared or vanished, something started or stopped qualifying — or when the poll
+itself has gone quiet for three days. Daily mail about ten SKUs that sit still
+for weeks is how a digest trains its reader to ignore it. `--force` sends anyway.
 
-| | |
-|---|---|
-| Test without waiting | `Start-ScheduledTask -TaskName MiniPCDigest` |
-| Check the last result | `Get-ScheduledTaskInfo -TaskName MiniPCDigest` |
-| Remove it | `Unregister-ScheduledTask -TaskName MiniPCDigest` |
-| Logs | `logs/daily-YYYY-MM.log`, git-ignored |
+Every digest opens with what moved since the last one and a poll-coverage line
+(`polled 26 of the last 30 days`). Coverage is computed from the observation log
+rather than a success flag, so it cannot be fooled by a poller that died before
+writing. This matters more once sending is change-gated: a dead tracker and a
+quiet market both produce silence, so coverage is what tells them apart — and a
+coverage alert sends the digest even when nothing changed.
 
-`scripts/run-daily.ps1` is what the task executes, and it is runnable by hand.
-**It sends the digest even when the poll fails**, and the report says so in words
-at the top of the warnings. That is deliberate: skipping the send would produce
-silence, and silence is indistinguishable from a quiet day with no new deals. A
-missed poll is also an observation that can never be backfilled, so the task is
-set to run at the next wake if the machine was off — but not to wake it.
+GitHub disables scheduled workflows after 60 days of repository inactivity, and
+its cron is best-effort under load. Both show up as gaps in that coverage line.
+
+#### Running the schedule locally instead
+
+`scripts/install-task.ps1` registers a Windows Task Scheduler entry doing the
+same thing, and `scripts/run-daily.ps1` is what it runs. Kept for the case where
+Actions is stalled — running both means two digests on any day something moves.
+Logs land in `logs/daily-YYYY-MM.log`, git-ignored.
 
 ## Reading the report
 

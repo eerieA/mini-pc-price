@@ -1,0 +1,75 @@
+# Poll, digest, and commit the history back (plan.md §1, §7).
+#
+# This runs the tracker off the desktop so the observation log has no holes in
+# it. That is the whole reason it exists: an observation cannot be backfilled
+# (§1), and a desktop that is asleep at 08:00 simply loses that day.
+#
+# It commits data/tracker.db back to the repo, which makes the repo the single
+# copy of the history -- `git pull` and the local report, digest and chart all
+# read the same database they always did. No sync, no second store.
+
+name: daily
+
+on:
+  schedule:
+    # 12:00 UTC. GitHub's cron runs on UTC only and is explicitly best-effort:
+    # it fires late under load and occasionally not at all, which is why the
+    # digest reports poll coverage rather than trusting this to be exact
+    # (src/coverage.py).
+    - cron: "0 12 * * *"
+  workflow_dispatch:        # the "run it now" button, for testing
+
+# One run at a time. Two concurrent runs would both commit the database and the
+# second would fail to push, losing its observations.
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # to commit the updated database
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests pyyaml
+
+      # Keeps going on failure so the digest still sends and reports the gap.
+      # A failed poll that also cancels the digest produces silence, and silence
+      # is what a quiet day looks like too (§8).
+      - name: Poll
+        id: poll
+        continue-on-error: true
+        run: python src/poll.py
+
+      - name: Digest
+        env:
+          MINIPC_SMTP_USER: ${{ secrets.MINIPC_SMTP_USER }}
+          MINIPC_SMTP_PASS: ${{ secrets.MINIPC_SMTP_PASS }}
+          MINIPC_DIGEST_TO: ${{ secrets.MINIPC_DIGEST_TO }}
+        run: python src/digest.py
+
+      # Committed even when the poll failed: digest.py records what it sent in
+      # the same database, and losing that would re-report the same movement
+      # tomorrow.
+      - name: Commit history
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/tracker.db
+          git diff --quiet --cached || git commit -m "poll: $(date -u +%Y-%m-%d)"
+          git push
+
+      - name: Fail the run if the poll failed
+        if: steps.poll.outcome == 'failure'
+        run: |
+          echo "The poll step failed; the digest was still sent and will report"
+          echo "the gap. Check the Poll step's log above."
+          exit 1

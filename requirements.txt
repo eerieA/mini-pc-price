@@ -1,0 +1,13 @@
+# The whole dependency set. Two libraries, both in poll.py's fetch path.
+#
+# Unpinned deliberately: this is a personal tool with one user and a CI job that
+# reinstalls from scratch daily, so a pin would mean a dependabot chore rather
+# than a reproducibility win. If a future version breaks the poll, the digest
+# reports the gap the next morning (src/coverage.py) -- which is the recovery
+# path either way.
+requests
+pyyaml
+
+# Tests only. Not installed in CI: the daily workflow polls and mails, it does
+# not run the suite.
+pytest

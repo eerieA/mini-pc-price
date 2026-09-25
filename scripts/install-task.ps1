@@ -1,5 +1,12 @@
 # Register the daily run with Task Scheduler (plan.md §9, Phase 2).
 #
+# NOT the normal way to run this any more. The daily poll and digest run in
+# GitHub Actions (.github/workflows/daily.yml), because a desktop that sleeps
+# loses observations that cannot be backfilled (§1). This is kept for the case
+# where Actions is stalled or disabled and you want the local machine polling
+# again -- if you do register it while Actions is also running, expect two
+# digests on any day something moves.
+#
 #     powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
 #     powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1 -At 07:30
 #

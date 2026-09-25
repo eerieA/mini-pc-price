@@ -1,7 +1,12 @@
 """SQLite -> filter -> rank -> email (plan.md §6, Phase 2).
 
-    python src/digest.py            send it
+    python src/digest.py            send it, if anything moved
+    python src/digest.py --force    send it regardless
     python src/digest.py --dry-run  print what would be sent, send nothing
+
+Sends only when something moved since the last digest, or when the poll has gone
+quiet (src/changes.py, src/coverage.py). Daily mail about ten SKUs that sit still
+for weeks is how a digest trains its reader to ignore it (§6).
 
 The body is `report.py`'s output verbatim. That is deliberate: the digest and
 the console are one rendering with two destinations, and a second rendering of
@@ -16,12 +21,14 @@ testing (see `.env.example`); real environment variables always win over it.
 import os
 import smtplib
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
 import yaml
 
+import changes
+import coverage
 import db
 import dotenv_lite
 import ranking
@@ -68,16 +75,19 @@ def recipient(settings):
     return address
 
 
-def body_for(listings, config):
+def body_for(listings, config, prefix=(), ranked=None):
     """The digest body, or None when there is nothing worth sending.
 
     An empty database is not an empty email. A digest that arrives saying
     nothing every morning trains its one reader to stop opening it, which costs
     more than the missed day (§6).
+
+    `prefix` is the what-moved and coverage blocks, above the ranking because
+    they are why this particular email exists today.
     """
     if not listings:
         return None
-    return report.build_report(listings, config)
+    return "\n".join([*prefix, report.build_report(listings, config, ranked)])
 
 
 def build_message(body, settings, sender, to, date=None):
@@ -141,11 +151,38 @@ def main(argv=None):
     settings = load_settings()
     conn = db.connect(ROOT / "data" / "tracker.db")
     listings = db.fetch_current(conn)
-    conn.close()
+    config = ranking.load_config()
 
-    body = body_for(listings, ranking.load_config())
+    # Ranked exactly once, here, and the result is reused. ranking.rank()
+    # applies overrides by mutating the listing dicts, so a second call on the
+    # same objects sees a value the first call already wrote and reports the
+    # override as redundant -- correctly, which is why this is fixed by not
+    # ranking twice rather than by relaxing that check (src/overrides.py).
+    ranking_result = ranking.rank(listings, config)
+    qualifiers, _ = ranking.split(ranking_result[0])
+    qualifying_urls = {listing["url"] for _, listing, _, _ in qualifiers}
+
+    coverage_status = coverage.report(conn)
+    previous = changes.load_previous(conn)
+    current = changes.snapshot(listings, qualifying_urls)
+    moved = changes.diff(previous, current)
+
+    # A dead poll must not be silenced by "nothing changed" -- when nothing is
+    # being fetched, nothing CAN change, so the suppression rule would hide
+    # exactly the failure it most matters to report (§8).
+    nothing_to_say = changes.is_empty(moved) and not coverage_status["alert"]
+    if nothing_to_say and not ("--force" in argv or dry_run):
+        print(f"No change since {previous['sent_at'][:16]}; nothing sent. "
+              f"(--force to send anyway)")
+        conn.close()
+        return 0
+
+    prefix = [*changes.format_changes(moved, previous),
+              *coverage.lines(coverage_status)]
+    body = body_for(listings, config, prefix, ranking_result)
     if body is None:
         print("No listings in the database; nothing sent. Run poll.py first.")
+        conn.close()
         return 1
 
     if dry_run:
@@ -155,6 +192,7 @@ def main(argv=None):
         print(f"--dry-run: would send to {recipient(settings)}\n")
         sys.stdout.reconfigure(encoding="ascii", errors="replace")
         print(body)
+        conn.close()
         return 0
 
     user, password = credentials()
@@ -162,8 +200,17 @@ def main(argv=None):
     message = build_message(body, settings, user, to,
                             date=date.today().isoformat())
     send(message, user, password, settings["smtp"])
+
+    # Only now. Recording before the send would mean a transient SMTP failure
+    # silently consumed the movement it was meant to report.
+    changes.record_sent(conn, datetime.now(timezone.utc).isoformat(
+        timespec="seconds"), current)
+    conn.commit()
+    conn.close()
     print(f"Sent to {to} ({len(listings)} listings).")
     return 0
+
+
 
 
 if __name__ == "__main__":
