@@ -18,6 +18,16 @@ on:
     # (src/coverage.py).
     - cron: "0 12 * * *"
   workflow_dispatch:        # the "run it now" button, for testing
+    inputs:
+      force:
+        description: "Send the digest even if nothing moved"
+        type: boolean
+        default: false
+        # A checkbox rather than a temporary edit to the digest step, because
+        # the edit is the kind you forget to revert -- and a workflow stuck on
+        # --force is the daily noise §6 gates against. It exists to prove the
+        # send path from a runner: Gmail accepting a login from GitHub's IP
+        # range is the one part of this the local machine cannot test.
 
 # One run at a time. Two concurrent runs would both commit the database and the
 # second would fail to push, losing its observations.
@@ -53,7 +63,7 @@ jobs:
           MINIPC_SMTP_USER: ${{ secrets.MINIPC_SMTP_USER }}
           MINIPC_SMTP_PASS: ${{ secrets.MINIPC_SMTP_PASS }}
           MINIPC_DIGEST_TO: ${{ secrets.MINIPC_DIGEST_TO }}
-        run: python src/digest.py
+        run: python src/digest.py ${{ inputs.force && '--force' || '' }}
 
       # Committed even when the poll failed: digest.py records what it sent in
       # the same database, and losing that would re-report the same movement

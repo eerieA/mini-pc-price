@@ -138,8 +138,22 @@ def send(message, user, password, smtp):
         )
 
 
+KNOWN_FLAGS = {"--dry-run", "--force"}
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+
+    # An unrecognised flag is an error, not something to ignore. The workflow
+    # builds this argument from an expression (.github/workflows/daily.yml), and
+    # a flag that silently does nothing would look exactly like a successful run
+    # that decided not to send -- which is the failure this project keeps
+    # finding in other forms (§8).
+    unknown = [a for a in argv if a not in KNOWN_FLAGS]
+    if unknown:
+        raise SystemExit(f"Unknown argument(s): {' '.join(unknown)}. "
+                         f"Valid flags: {', '.join(sorted(KNOWN_FLAGS))}.")
+
     dry_run = "--dry-run" in argv
 
     # Local convenience only, and it never overrides a variable already set --

@@ -103,6 +103,11 @@ coverage alert sends the digest even when nothing changed.
 GitHub disables scheduled workflows after 60 days of repository inactivity, and
 its cron is best-effort under load. Both show up as gaps in that coverage line.
 
+To prove the send path still works when nothing has moved for a while: Actions →
+`daily` → **Run workflow**, tick *Send the digest even if nothing moved*. That is
+the only way to test Gmail accepting a login from a runner — a local send proves
+your own IP and `.env`, not GitHub's.
+
 #### Running the schedule locally instead
 
 `scripts/install-task.ps1` registers a Windows Task Scheduler entry doing the

@@ -114,3 +114,12 @@ def test_a_dead_poll_sends_even_when_nothing_changed():
 
     assert changes.is_empty(no_movement) and not healthy["alert"]
     assert not (changes.is_empty(no_movement) and not dead["alert"])
+
+
+@pytest.mark.parametrize("flag", ["--forse", "-force", "--send"])
+def test_unknown_flag_is_an_error(env, flag):
+    """The workflow builds this argument from a GitHub expression, so a typo
+    reaches the CLI rather than a human. Ignoring it would look exactly like a
+    run that decided not to send (.github/workflows/daily.yml)."""
+    with pytest.raises(SystemExit, match="Unknown argument"):
+        digest.main([flag])
