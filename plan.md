@@ -113,12 +113,18 @@ present in a Shopify `products.json`.
 
 So `poll.py` fetches those sources directly. CD arrives with the first source
 that genuinely needs it — an HTML page requiring a selector, a JS render, or
-cookies — which is ITRefurbs in Phase 3 (§9).
+cookies. **No such source has been found yet.** ITRefurbs was named here as that
+source until 2026-09-25, when its storefront turned out to be Shopify serving
+`products.json` like eTek's (§9). CD is therefore not scheduled for any phase;
+it is a capability waiting for a source that needs it.
 
-This is a deliberate trade, and the thing given up is real: CD would keep
+This was a deliberate trade, and the thing given up was real: CD would keep
 checking on a schedule of its own even if `poll.py` were broken or the desktop
 were off, whereas a direct fetch that does not run is an observation that is gone
-for good (§2 — observations cannot be backfilled). What makes the trade worth it
+for good (§2 — observations cannot be backfilled). Moving the schedule into CI
+(above) bought most of that back from a different direction: the poll no longer
+depends on one machine being awake, and the coverage line reports the days it
+missed (§8). What made the trade worth it
 is that Phase 1 is testing the *parser*, and every piece of CD infrastructure —
 container health, API token, watch UUID, CD's text-diff semantics over JSON — is
 a way for Phase 1 to fail for reasons that have nothing to do with the code being
@@ -413,8 +419,11 @@ sources:
   - id: itrefurbs
     name: ITRefurbs
     type: refurbisher
-    discovery_urls: [...]
-    selectors: {...}
+    # Also tier-0 Shopify, confirmed 2026-09-25 -- no `selectors:` key here
+    # either. See §9 for what that finding cost Phase 3's premise.
+    products_json: "https://itrefurbs.ca/collections/refurbished-desktops/products.json?limit=250"
+    product_url_base: "https://itrefurbs.ca/products"
+    source_adjustment: 25
 
 # Excluded, with reasons — see below. Kept as comments so the decisions are
 # visible to anyone reading the config rather than only the plan.
@@ -1154,7 +1163,7 @@ The one thing that must not be gated this way is failure — see §8.
   2 seller below gate (rating / reviews)
   8 ranked above with penalties applied
 
-  ⚠  itrefurbs: title selector returned nothing, 3 checks running
+  ⚠  <html source>: title selector returned nothing, 3 checks running
   ⚠  chassis unknown, excluded until looked up: hp-elitedesk-805-g6-mini
 ```
 
@@ -1216,7 +1225,7 @@ The selector-health warning at the bottom is not decoration. See §8.
 
 ```text
 mini-pc-price/
-├── docker-compose.yml      # changedetection only
+├── docker-compose.yml      # changedetection - unscheduled, see §1
 ├── config/
 │   ├── sources.yaml        # per source: urls + selectors, or a products.json
 │   ├── watch_urls.yaml     # manually seeded product URLs (any retailer)
@@ -1237,7 +1246,7 @@ mini-pc-price/
 │   ├── coverage.py         # did the poll actually run (§8)
 │   ├── chart.py            # price history → self-contained chart.html (§6)
 │   ├── specs.py            # title/JSON-LD → normalized specs
-│   ├── cd_client.py        # thin ChangeDetection REST wrapper — Phase 3
+│   ├── cd_client.py        # thin ChangeDetection REST wrapper — unscheduled
 │   └── db.py               # two tables, plus digest_state (§6)
 ├── scripts/                # local Windows scheduling; CI is the normal path (§1)
 ├── .github/workflows/
@@ -1247,10 +1256,11 @@ mini-pc-price/
 └── README.md
 ```
 
-A handful of source files, none of them a framework. `docker-compose` runs one
-container (ChangeDetection); the tracker is a scheduler plus Python. Neither
-exists in Phase 1 — tier-0 sources are fetched directly and CD arrives with the
-first HTML source (§1, §9).
+A handful of source files, none of them a framework. `docker-compose` would run
+one container (ChangeDetection); the tracker is a scheduler plus Python. Neither
+the container nor `cd_client.py` exists, and neither is scheduled — every source
+tracked or reviewed so far serves tier-0 JSON, so CD waits for a source that
+needs it (§1, §9).
 
 `report.py` and `digest.py` share the filter-and-rank step and differ only in
 rendering. `report.py` comes first (Phase 1) and is run by hand; `digest.py`
@@ -1619,11 +1629,35 @@ Add ITRefurbs — the second of the two independent refurbishers that survived t
 cross-vendor comparison starts to matter, so `source_adjustment` needs to be
 applied consistently before these listings compete with each other.
 
-**ChangeDetection lands here**, with `docker-compose.yml` and `cd_client.py`
-(§7). ITRefurbs is the first source that actually needs it — an HTML page with
-selectors to maintain and silent breakage to track (§8) — which is the condition
-§1 defers it on. `poll.py` grows a second fetch path; everything downstream of
-the fetch is unchanged.
+**ChangeDetection does NOT land here (corrected 2026-09-25).** This phase was
+written on the assumption that ITRefurbs is an HTML storefront needing selectors,
+which made it the condition §1 defers CD on. It is not: `itrefurbs.ca` is Shopify
+and serves `products.json` in the same shape as eTek's, verified by fetching it.
+So `poll.py` needs no second fetch path, there is no `docker-compose.yml` and no
+`cd_client.py`, and adding the source is a `sources.yaml` entry.
+
+What the phase costs instead is parsing, and the shape of that cost is different
+from Phase 1's:
+
+- **The collection is mixed.** `refurbished-desktops` holds 11 products, of
+  which 5 are small-form desktops; the rest are gaming towers, a workstation and
+  an Asus mini *tower*. eTek's collection was entirely mini PCs, so nothing has
+  ever had to distinguish "could not read this" from "read it fine, wrong kind of
+  machine." Both currently land in `parse_ok = false` and would be reported as
+  parse failures daily, forever. That distinction is the real design work here,
+  not selectors.
+- **Titles carry a condition prefix** — `Refurbished (Excellent) - HP EliteDesk
+  800 G4 Desktop Mini w/ Key` — and at least one listing states its storage only
+  in the description. `parse_ram_gb` already falls back to the description;
+  `parse_storage` does not, and would need to, with the care that fallback needed
+  the first time (§5).
+- **Measured on real inventory, 2026-09-25: 3 of 11 parse.** Seven of the eight
+  failures are correct refusals on machines that are not candidates. One is a
+  genuine gap: an EliteDesk 800 G3 SFF at $293.99, failing on storage.
+
+The chassis entries this needs — 800 G3 SFF, 800 G4 Mini, 400 G5 Mini — are
+already in `chassis.yaml` from the Refurbish Canada research (§3), which is the
+second time that gated vendor's work has paid for itself.
 
 Cross-retailer dedup via `canonical_key` (v1 §11, kept in full) becomes
 meaningful with multiple sources:
@@ -1637,6 +1671,15 @@ meaningful with multiple sources:
 ```
 
 One line in the digest, not two.
+
+Worth tempering the expectation: both vendors stock HP EliteDesk 800 G4 Minis,
+but eTek's is an i7-8700T/16GB and ITRefurbs' is a different configuration, so
+they do **not** share a `canonical_key` and dedup does not fire. Off-lease
+inventory is heterogeneous — same chassis, different CPU, RAM and disk — so exact
+config collisions between two small refurbishers will be rarer than the diagram
+suggests. The comparison that actually matters here is chassis-level and
+effective-price-level, which the ranking already does. Dedup earns its keep in
+Phase 4, where eBay carries many sellers listing identical machines.
 
 ### Phase 3b — direct retailers
 
@@ -1766,3 +1809,4 @@ stays a record of one revision rather than a running log.
 | -- | Poll coverage in every digest (§8) | The cost of the row above: once mail only arrives on change, a dead tracker and a quiet market look identical. Coverage is read from the observation log rather than a success flag, and three silent days send the digest regardless of change |
 | -- | `chart.py`, on demand (§6) | "Is this price unusual for this machine" is a question asked while deciding, not every morning. Self-contained HTML with the data inlined: no CDN, no matplotlib, nothing to break later |
 | Dependencies listed in the README only | `requirements.txt` | CI needs a declared install, which is the consumer the file was previously waiting for |
+| ITRefurbs needs ChangeDetection and selectors (§1, §9 Phase 3) | Also tier-0 Shopify JSON; CD unscheduled | Checked rather than assumed, 2026-09-25: `itrefurbs.ca/collections/refurbished-desktops/products.json` returns the same shape as eTek's. The premise came from the vendor being described as an HTML storefront in v1's source survey and was never verified. No source tracked or reviewed so far needs a selector, so CD is now a capability waiting for a source rather than a phase deliverable. Phase 3's real cost moves from selectors to parsing: the collection is mixed (5 of 11 are small-form desktops), so "wrong kind of machine" needs distinguishing from "could not parse" |
