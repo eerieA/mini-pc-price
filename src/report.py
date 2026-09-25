@@ -16,6 +16,7 @@ killing the run.
 """
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import db
@@ -124,8 +125,31 @@ def build_report(listings, config):
 
     out.append("=" * WIDTH)
     out.extend(summary_lines(qualifiers, near_misses, rules))
-    out.extend(warning_lines(ranked, unparsed, config))
+    out.extend(warning_lines(ranked, unparsed, config,
+                             stale=_stale_hours(listings)))
     return "\n".join(out)
+
+
+def _stale_hours(listings):
+    """Hours since the newest observation, or None if that is recent.
+
+    Scheduled, the digest sends whether or not the poll succeeded -- silence
+    would be indistinguishable from a quiet day (scripts/run-daily.ps1). That
+    choice is only honest if a digest built on yesterday's prices says so in
+    words. The header prints `fetched <timestamp>`, but reading a stale date
+    requires noticing it; this states the conclusion.
+
+    36 hours, not 24: a daily run that drifts by an hour, or a DST shift, must
+    not raise a warning that means nothing.
+    """
+    if not listings:
+        return None
+    newest = max(l["observed_at"] for l in listings)
+    observed = datetime.fromisoformat(newest)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    hours = (datetime.now(timezone.utc) - observed).total_seconds() / 3600
+    return hours if hours >= 36 else None
 
 
 def summary_lines(qualifiers, near_misses, rules):
@@ -153,10 +177,19 @@ def summary_lines(qualifiers, near_misses, rules):
     return lines
 
 
-def warning_lines(ranked, unparsed, config):
+def warning_lines(ranked, unparsed, config, stale=None):
     """Not decoration (§9). These are conclusions a reader would otherwise have
     to reconstruct from the ranking."""
     warnings = []
+
+    if stale is not None:
+        # First, because it qualifies everything below it: on stale data the
+        # prices, the ranking and the gap are all as old as the last poll.
+        warnings.append(
+            f"PRICES ARE {stale:.0f} HOURS OLD - the last poll did not run or "
+            f"failed. Every price and ranking below is from that poll; check "
+            f"logs/ for the failure before acting on it."
+        )
 
     if ranked and not [r for r in ranked if not r[3]]:
         shared = set.intersection(*(set(r[3]) for r in ranked))

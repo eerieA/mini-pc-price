@@ -63,6 +63,31 @@ directory cannot quietly override a scheduled task that sets them properly.
 Sending is the only irreversible step here, so `--dry-run` prints the message
 and sends nothing. It works without credentials set.
 
+### Running it daily
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
+powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1 -At 07:30
+```
+
+Registers a Task Scheduler entry that polls and then sends, every morning at
+08:00 by default. Re-run it to change the time. It runs as you, without elevation
+— it needs none, and it must be the account that owns `.env`.
+
+| | |
+|---|---|
+| Test without waiting | `Start-ScheduledTask -TaskName MiniPCDigest` |
+| Check the last result | `Get-ScheduledTaskInfo -TaskName MiniPCDigest` |
+| Remove it | `Unregister-ScheduledTask -TaskName MiniPCDigest` |
+| Logs | `logs/daily-YYYY-MM.log`, git-ignored |
+
+`scripts/run-daily.ps1` is what the task executes, and it is runnable by hand.
+**It sends the digest even when the poll fails**, and the report says so in words
+at the top of the warnings. That is deliberate: skipping the send would produce
+silence, and silence is indistinguishable from a quiet day with no new deals. A
+missed poll is also an observation that can never be backfilled, so the task is
+set to run at the next wake if the machine was off — but not to wake it.
+
 ## Reading the report
 
 ```text

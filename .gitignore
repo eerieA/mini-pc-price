@@ -19,3 +19,7 @@ __pycache__/
 # whole reason the credentials are not in config/*.yaml. .env.example is the
 # committed template and holds no real values.
 .env
+
+# Daily run logs (scripts/run-daily.ps1). Local operational output, not history:
+# they record the recipient address and rotate monthly.
+logs/

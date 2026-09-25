@@ -90,10 +90,42 @@ def build_message(body, settings, sender, to, date=None):
 
 
 def send(message, user, password, smtp):
-    with smtplib.SMTP(smtp["host"], smtp["port"], timeout=30) as server:
-        server.starttls()
-        server.login(user, password)
-        server.send_message(message)
+    """Deliver, or exit non-zero with a line saying which step failed.
+
+    Scheduled, this is the difference between a visible failure and an invisible
+    one: an unhandled traceback in a log nobody opens looks exactly like a quiet
+    morning with no new deals, which is the silent-breakage pattern §8 calls the
+    main ongoing cost. Each failure below is a different fix, so each says so.
+    """
+    try:
+        with smtplib.SMTP(smtp["host"], smtp["port"], timeout=30) as server:
+            server.starttls()
+            server.login(user, password)
+            server.send_message(message)
+    except smtplib.SMTPAuthenticationError:
+        # Never echo the password, not even a length. This is the most likely
+        # failure of the four and the only one that is a credentials problem:
+        # Gmail rejects an account password here, and requires 2FA before an
+        # app password can exist at all.
+        raise SystemExit(
+            f"SMTP rejected the login for {user}. {SMTP_PASS} must be a 16-"
+            f"character Google App Password, not the account password, and the "
+            f"account needs 2-Step Verification enabled for one to be issued."
+        )
+    except (smtplib.SMTPException, OSError) as error:
+        # OSError covers the network: DNS, refused connection, timeout. Grouped
+        # with SMTPException because the response is identical -- the digest did
+        # not go out, tomorrow's run will try again, and no data was lost.
+        # Gmail answers an unknown account by dropping the connection rather
+        # than returning an auth error, so a credentials problem can arrive
+        # here too -- hence the pointer, which costs one line and saves
+        # debugging the network when the password is what is wrong.
+        raise SystemExit(
+            f"Could not send via {smtp['host']}:{smtp['port']} -- "
+            f"{type(error).__name__}: {error}\n"
+            f"If the network is fine, check {SMTP_USER} and {SMTP_PASS}: Gmail "
+            f"closes the connection on an unknown account."
+        )
 
 
 def main(argv=None):

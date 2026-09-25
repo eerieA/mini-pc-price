@@ -1501,6 +1501,25 @@ only re-scoring with a requirement relaxed. It is deferred anyway, because with
 two qualifying machines the bar is currently answering the question it was meant
 to answer; it earns its place when tuning is actually in question.
 
+**Scheduling is part of Phase 2, not an afterthought.** "One ranked digest a day"
+is the project's premise, and a script someone remembers to type is not that.
+`scripts/install-task.ps1` registers the Task Scheduler entry;
+`scripts/run-daily.ps1` is what it runs, polling and then sending, appending both
+to a monthly log.
+
+Two choices there follow from §8 rather than from convenience. The digest sends
+**even when the poll fails**, with the staleness stated in words at the top of
+the warnings — skipping the send produces silence, and silence is exactly what a
+working day with no new deals looks like, which is the silent-breakage failure
+mode §8 names as the main ongoing cost. And the task is `StartWhenAvailable` but
+not `WakeToRun`: a missed poll is an observation that cannot be backfilled (§1),
+so a desktop that was off should catch up at the next wake — but waking a machine
+to check refurbisher prices is a worse trade than polling an hour late.
+
+`digest.py` handles SMTP failure by exiting with a line naming which step failed,
+for the same reason. An unhandled traceback in a log nobody opens is
+indistinguishable from a quiet morning.
+
 The secret handling is worth stating once: the Gmail app password is read from
 `MINIPC_SMTP_PASS` in the environment, never from `config/*.yaml`, because those
 files are committed. A git-ignored `.env` is loaded for local testing, with
