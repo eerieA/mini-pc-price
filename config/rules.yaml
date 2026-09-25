@@ -20,7 +20,7 @@ requirements:                 # fail -> penalised, still ranked
   cpu_cores:     {min: 6,    else_penalty: 80}
   storage_nvme:  {min: true, else_penalty: 40}
 
-prefer_shipped_ram_gb: 32     # a label and a tiebreaker, not a dollar term
+prefer_shipped_ram_gb: 32     # a marker, not a dollar term and not a tiebreaker
 
 surface_near_misses: true     # digest section for single-requirement failures
 
@@ -48,9 +48,10 @@ surface_near_misses: true     # digest section for single-requirement failures
 # neutral transaction: pay the money, get the capacity. Under a DDR4 shortage it
 # is not — the part may simply not be there, and parts.yaml's prices are
 # systematically low because they are a hand refresh against a market guided up
-# 10-20%/month. So a listing already carrying 32 GB or more is marked in the
-# output, and where two machines are within the noise floor on effective price,
-# the one that ships with the memory wins.
+# 10-20%/month. So a listing already carrying 32 GB or more is marked with a `*`
+# in the output, and the reader breaks the tie. Nothing in the ranking consults
+# this value -- an automatic "within the noise floor, shipped wins" rule would
+# need a noise floor, which is a second tunable nobody has calibrated.
 #
 # Deliberately a label rather than another dollar term: the uncertainty here is
 # about AVAILABILITY, which is not a price, and a second subjective penalty

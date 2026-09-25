@@ -1,0 +1,40 @@
+# Manually seeded product URLs (plan.md §9). One URL is one watch.
+#
+# This is the path by which a listing found by hand — a marketplace post, a
+# clearance page someone linked, a store this project does not otherwise track —
+# enters the observation log. It needs no discovery work and no source entry, and
+# it is the fallback whenever discovery breaks on a source in sources.yaml.
+#
+# ── What Phase 1 can actually do with a URL here ─────────────────────────────
+# A seeded URL is only as parseable as the page behind it, and "any retailer"
+# overstates what this phase delivers (§9):
+#
+#   Shopify product URL   tier 0. `<url>.json` returns the same product object
+#                         the collection path already parses, so these are
+#                         polled and stored exactly like a source listing.
+#   anything else         recorded as PENDING and reported, never parsed.
+#                         Selectors are Phase 3, with ChangeDetection (§1).
+#
+# A pending watch is printed in report.py's warnings every run. That is
+# deliberate: a watch that quietly does nothing is indistinguishable from one
+# that found nothing (§8), and the same argument holds here as for an unknown
+# chassis (§5) — a visible gap beats a confident silence.
+#
+# Adding a pending URL is still worth it. It records the intent in one place, it
+# is the list Phase 3 works through, and when this project can parse the page the
+# watch starts producing observations with no further edit.
+
+watches: []
+
+# ── Format ───────────────────────────────────────────────────────────────────
+# `url` is required. `note` is free text for why this URL is here — where it came
+# from, what caught your eye — and shows up in the pending warning.
+#
+# watches:
+#   - url: "https://www.eteklaptop.ca/products/dell-optiplex-3080-micro"
+#     note: "cheapest route to 64GB if its SSD turns out to be NVMe"
+#   - url: "https://www.kijiji.ca/v-desktop-computers/..."
+#     note: "local pickup, seller says 64GB installed"
+#
+# A watched URL that duplicates one a source already polls is harmless: listings
+# are keyed on URL (§4), so both paths write the same row.

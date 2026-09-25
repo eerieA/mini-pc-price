@@ -17,6 +17,7 @@ import yaml
 
 import db
 import specs
+import watches
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config"
@@ -31,11 +32,16 @@ def load_config():
         "chassis": read("chassis.yaml"),
         "cpus": read("cpus.yaml"),
         "aliases": read("chassis_aliases.yaml"),
+        "watches": watches.load(CONFIG / "watch_urls.yaml"),
     }
 
 
 def fetch(url):
-    """Fetch the products JSON. Returns (products, raw_bytes)."""
+    """Fetch a Shopify JSON endpoint. Returns (decoded, raw_bytes).
+
+    Serves both shapes: a collection's `{"products": [...]}` and a single
+    product's `{"product": {...}}`.
+    """
     response = requests.get(url, timeout=30,
                             headers={"User-Agent": "mini-pc-price/0.1"})
     response.raise_for_status()
@@ -129,6 +135,38 @@ def poll_source(conn, source, config, fetched_at):
     return len(products["products"]), parsed_ok, raw_path
 
 
+def poll_watch(conn, watch, config, fetched_at):
+    """Poll one hand-seeded URL (§9). Returns True if it produced a listing.
+
+    A pending watch is not an error and not a silent skip: it returns False and
+    is reported by the caller, because a watch that quietly does nothing is
+    indistinguishable from one that found nothing (§8).
+    """
+    classified = watches.classify(watch["url"])
+    if not classified["tier0"]:
+        return False
+
+    document, payload = fetch(classified["json_url"])
+    save_raw("watch", payload, fetched_at)
+
+    # A watch has no sources.yaml entry, so it carries no source_adjustment.
+    # Phase 1 scores it at face value and says so in the report rather than
+    # borrowing a number from a vendor this URL may have nothing to do with.
+    source = {"id": "watch", "product_url_base": watch["url"].rsplit("/", 1)[0]}
+    listing, observation = listing_from_product(document["product"], source,
+                                                config, fetched_at)
+    # Key on the URL as written. Deriving it from the handle would store a
+    # second row for a page a source already tracks (§4 keys listings on URL).
+    listing["url"] = watch["url"]
+
+    listing_id = db.upsert_listing(conn, listing)
+    db.insert_observation(conn, listing_id,
+                          fetched_at.isoformat(timespec="seconds"),
+                          observation["price"], observation["compare_at_price"],
+                          observation["in_stock"])
+    return True
+
+
 def main():
     config = load_config()
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -141,6 +179,14 @@ def main():
         print(f"{source['id']}: fetched {total}, parse_ok {parsed_ok}/{total}, "
               f"raw -> {raw_path.relative_to(ROOT)}")
 
+    polled = sum(poll_watch(conn, w, config, fetched_at)
+                 for w in config["watches"])
+    if config["watches"]:
+        pending = len(config["watches"]) - polled
+        print(f"watch_urls: polled {polled}, pending {pending} "
+              f"(reported by report.py)")
+
+    conn.commit()
     conn.close()
 
 

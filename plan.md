@@ -1388,6 +1388,13 @@ same `products.json` path already in use, one product instead of a collection.
 Anything else is an HTML page needing selectors, which is precisely what §1
 defers to Phase 3 along with ChangeDetection.
 
+Recognising a tier-0 URL is positional — `/products/<handle>`, optionally behind
+`/collections/<collection>` — plus one exception found by a test rather than by
+reasoning: the handle must not be a bare number. Best Buy's
+`/en-ca/category/products/12345` matches the positional rule exactly and is an
+SKU path on a non-Shopify store, so the permissive reading would have produced a
+watch that 404s on every run.
+
 So the Phase 1 version of this file covers tier-0 URLs and records the rest as
 pending rather than silently failing on them. That is narrower than "any
 retailer" suggests, and it is still worth having: it is the mechanism by which a

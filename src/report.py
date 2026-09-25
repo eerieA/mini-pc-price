@@ -21,6 +21,7 @@ from pathlib import Path
 import yaml
 
 import db
+import watches
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config"
@@ -35,6 +36,7 @@ def load_config():
         "parts": read("parts.yaml"),
         "chassis": read("chassis.yaml"),
         "sources": {s["id"]: s for s in read("sources.yaml")["sources"]},
+        "watches": watches.load(CONFIG / "watch_urls.yaml"),
     }
 
 
@@ -96,7 +98,12 @@ def score(listing, config):
         # drive may well be NVMe -- the vendor simply does not say (§5).
         misses.append("nvme unknown")
 
-    adjustment = config["sources"][listing["source_id"]].get("source_adjustment", 0)
+    # A hand-seeded watch (§9) has no sources.yaml entry and so no
+    # source_adjustment. Scoring it at 0 is the honest reading -- the URL may be
+    # any retailer -- but it makes a watched listing look better than an eTek one
+    # at the same price, which is why warning_lines() names them.
+    source = config["sources"].get(listing["source_id"], {})
+    adjustment = source.get("source_adjustment", 0)
     if adjustment:
         price += adjustment
         terms.append(f"+ {adjustment} src")
@@ -257,6 +264,19 @@ def warning_lines(ranked, unparsed, config):
                 "parts.yaml now prices NVMe, so the flat penalty understates a "
                 "real cost. Add the cost_to_reach(NVMe) term (plan.md §2)."
             )
+
+    for watch in config["watches"]:
+        classified = watches.classify(watch["url"])
+        if not classified["tier0"]:
+            note = f" ({watch['note']})" if watch.get("note") else ""
+            warnings.append(f"watch pending: {classified['reason']}{note}")
+            warnings.append(f"  {watch['url'][:70]}")
+
+    if any(r[1]["source_id"] == "watch" for r in ranked):
+        warnings.append(
+            "watched URLs score with source_adjustment 0 - no vendor recourse "
+            "risk is priced in. Compare them to sources.yaml rows with care."
+        )
 
     for listing in unparsed:
         warnings.append(f"parse_ok=false: {listing['title_raw'][:56]}")

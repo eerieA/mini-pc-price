@@ -1,0 +1,151 @@
+# mini-pc-price
+
+A deal tracker that watches Canadian retailers for a mini PC capable of hosting
+an EVE-NG lab of 5–6 nodes, and ranks what it finds by what the machine actually
+costs to make usable.
+
+This is a tool for one buying decision. It has a single user and a handful of
+sources; buying the machine ends the project successfully even if most of
+`plan.md` is never built.
+
+## The number it computes
+
+A listing price is not what a machine costs. A $225 box that needs $700 of
+memory is more expensive than a $550 box that needs $325, and the whole point of
+this tool is to sort by the second number rather than the first:
+
+```text
+effective_price = listing price
+                + cost to reach 64 GB RAM      (from config/parts.yaml)
+                + penalties for what it misses (from config/rules.yaml)
+                + a vendor recourse adjustment (from config/sources.yaml)
+```
+
+One requirement is absolute: `nested_virt`. A CPU without it cannot run the lab
+at any price, so those listings are excluded rather than penalised. Everything
+else — the 64 GB ceiling, 6 cores, NVMe — is a preference carrying a dollar
+penalty, which is what makes the bar movable as real inventory density becomes
+known. See `plan.md` §2.
+
+## Running it
+
+```sh
+pip install requests pyyaml pytest    # Python 3.11+; developed on 3.14
+python src/poll.py                    # fetch -> parse -> SQLite
+python src/report.py                  # SQLite -> filter -> rank -> console
+pytest -q
+```
+
+`poll.py` is safe to run as often as you like and is meant for a cron entry;
+`report.py` reads whatever has been collected and prints. Neither takes
+arguments.
+
+## Reading the report
+
+```text
+  $954.99  Dell OptiPlex 3080 Micro   $549.99 list  + 325 RAM + 40 pen + 40 src
+           i5-10500T / 6c / 32->64GB / 256GB SSD *ships 32GB
+           x nvme unknown
+```
+
+| Element | Means |
+| --- | --- |
+| `$954.99` | Effective price — what the machine costs once it can do the job |
+| `+ 325 RAM` | Real parts cost to reach 64 GB, priced in `parts.yaml` |
+| `+ 40 pen` | A requirement missed, charged at its `rules.yaml` penalty |
+| `+ 40 src` | Vendor recourse risk (`source_adjustment`) |
+| `32->64GB` | Ships with 32 GB, reaches 64 GB |
+| `*` | Ships at or above `prefer_shipped_ram_gb` — no EOL DDR4 to source |
+| `x ...` | Which requirements it misses |
+
+**`cost_to_reach` and a penalty are never both charged for the same
+requirement.** A machine that can reach 64 GB pays the memory; one that cannot
+pays the penalty instead.
+
+**The penalties are flat and the parts costs are real, so the ranking can
+mislead.** At `else_penalty: 325` against ~$650–700 of actual memory, a machine
+capped at 32 GB can rank *above* one that reaches 64 GB. That is a known
+distortion, documented rather than tuned away (`plan.md` §2) — which is why the
+report separates qualifying machines from near misses instead of printing one
+sorted list.
+
+Read the `warnings` block at the bottom. It carries conclusions that are not
+recoverable from the ranking: listings that failed to parse, watches that are
+idle, and requirements no listing in the database meets.
+
+## Configuration
+
+Thresholds, penalties, vendor adjustments and hardware facts live in
+`config/*.yaml`, never in code — that is what keeps the tool tunable by hand.
+
+| File | Holds |
+| --- | --- |
+| `rules.yaml` | The gate, the tunable requirements, their penalties |
+| `sources.yaml` | Where listings come from, and each vendor's `source_adjustment` |
+| `watch_urls.yaml` | Hand-seeded product URLs, for listings found by hand |
+| `chassis.yaml` | RAM ceiling and M.2 slots per model — the requirement invisible in a listing |
+| `chassis_aliases.yaml` | Brand + model number → chassis key |
+| `cpus.yaml` | Cores, threads and `nested_virt` per CPU |
+| `parts.yaml` | RAM and NVMe upgrade costs, with the date they were priced |
+
+Two config rules worth knowing before editing:
+
+- **Never default an unknown chassis.** A missing `chassis.yaml` entry means the
+  RAM ceiling cannot be computed. Assuming 64 GB ranks a machine as better than
+  it is, and that error is only discovered after the box is open — so unknown
+  chassis are held out of the ranking and named in the warnings instead.
+- **Chassis capability is not listing configuration.** `m2_nvme_slots: 1` says
+  the model *accepts* an NVMe drive, not that the unit for sale *has* one. The
+  code will not infer the second from the first.
+
+## What's stored
+
+Two tables, in `data/tracker.db`.
+
+- `listings` — the current state of a product page, keyed on its URL.
+- `observations` — an append-only log of what it cost each time we looked.
+
+Every run writes one observation per listing, **including runs where nothing
+changed**. An observation cannot be backfilled: re-polling gives today's price,
+never last month's. That asymmetry is why the database is committed to git
+despite being build output, and why this project polls on a schedule instead of
+reacting to change notifications.
+
+To read a listing's price history:
+
+```sql
+SELECT o.observed_at, o.price, o.compare_at_price
+FROM observations o JOIN listings l ON l.id = o.listing_id
+WHERE l.url = ?
+ORDER BY o.observed_at;
+```
+
+`data/raw/` holds every fetch response verbatim and is *not* committed. Nothing
+reads it in the normal path; it exists so a parser bug found on day 10 can be
+fixed against day 1's bytes.
+
+## What works today
+
+Phase 1: one tier-0 source (eTek's Shopify `products.json`), plus hand-seeded
+Shopify product URLs via `watch_urls.yaml`. No email, no ChangeDetection, no
+selectors.
+
+A seeded URL that is not a Shopify product page is recorded as **pending** and
+named in the report's warnings rather than parsed — HTML sources need selectors,
+which arrive in Phase 3. A watch that quietly did nothing would be
+indistinguishable from one that found nothing.
+
+`plan.md` is the design of record and carries the reasoning behind every choice
+above; `plan-v1.md` is the superseded first draft, kept only to record what was
+rejected. `research/` holds the saved vendor evidence behind the source
+decisions.
+
+## Conventions
+
+- **ASCII only in console output.** A Windows console is cp1252, and printing a
+  single arrow or check mark raises `UnicodeEncodeError` and kills the run. Read
+  files with an explicit `encoding='utf-8'`; write output with `x`, `*`, `!` and
+  `->`.
+- **`tests/test_specs.py` is the suite that matters.** Spec extraction from
+  vendor titles is where bugs actually live — the titles are inconsistent, and
+  at least one names a model its own description contradicts.
