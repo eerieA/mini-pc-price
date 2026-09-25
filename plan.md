@@ -1506,6 +1506,7 @@ That is a successful outcome, not an abandoned project — and manual seeding
 | — | Street price from eBay sold listings (§2, Phase 4) | The only baseline that identifies an underpriced machine on first sighting |
 | Historical median as the key signal (§10) | Demoted to a tiebreaker | Not just sparse — self-referential: it cannot tell whether a price was ever good |
 | — | Parser tier 0: vendor product JSON | Removes selector breakage entirely where it applies |
+| — | `listing_overrides.yaml` (§5) | A vendor's emailed answer is real evidence with nowhere to live: the page never changes, so the next poll would overwrite it. Applied after parsing, before scoring, with provenance required |
 | Refurbisher trust as a constant (§3) | `source_adjustment` in dollars | "Legit but slow support" is a price, not a gate |
 | Marketplace search scraping (§3) | Manual seeding + platform alerts | Value was never the issue; search-page scraping is |
 | Seller scoring function (§12) | Gates + dollar adjustment | Binary risk for a single purchase; dollars compare directly |

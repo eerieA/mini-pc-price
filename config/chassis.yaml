@@ -233,9 +233,110 @@ dell-optiplex-3080-micro:
   # load-bearing: no eTek listing states a storage interface at all (plan.md §5),
   # so every listing fails storage_nvme regardless of what the chassis supports.
 
+# ── Present in Refurbish Canada inventory, 2026-09-24 ────────────────────────
+# Ten models, researched against vendor documentation the same day. This source
+# states storage interfaces in its titles, unlike eTek — so unlike the eTek
+# block above, m2_nvme_slots here is rarely the field that decides a listing.
+
+dell-optiplex-3060-micro:
+  ram_slots: 2
+  ram_max_gb: 32          # DDR4-2666, 2 x 16 GB — NOT a 64 GB chassis
+  m2_nvme_slots: 1
+  sata: true
+  # Dell's 3060 Micro specs page lists "32 GB - 2 x 16 GB" as the maximum. Worth
+  # stating plainly because the 3060 sits between the 9020 (16 GB) and the 3070
+  # (32 GB) and reads like it should be newer than it is: a $499.99 listing here
+  # is a near-miss carrying else_penalty, not a 64 GB machine.
+
+dell-optiplex-7010-micro:
+  ram_slots: 2
+  ram_max_gb: 64          # DDR4-3200, 2 x 32 GB, dual-channel
+  m2_nvme_slots: 1        # M.2 2230 + 2280 supported; PCIe 4.0 x4
+  sata: true
+  # The 2023 re-use of the 7010 name (13th-gen Raptor Lake), not the 2012 model.
+  # Dell's owner's manual states two SODIMM slots and 64 GB explicitly.
+
+dell-optiplex-5050-sff:
+  ram_slots: 4            # full-size UDIMM, not SODIMM — see parts.yaml
+  ram_max_gb: 64          # DDR4-2133/2400, Dell's stated maximum
+  m2_nvme_slots: 1        # PCIe 3.0 x4
+  sata: true
+  # Four sockets means reaching 64 GB costs two UDIMM kits, not one SODIMM (§2).
+  # At $139.99 this is the cheapest 64 GB-capable chassis in either source, and
+  # the upgrade cost is what decides whether that matters.
+
+hp-elitedesk-800-g3-sff:
+  ram_slots: 4            # full-size DIMM DDR4-2400
+  ram_max_gb: 64
+  m2_nvme_slots: 1        # PCIe 3.0 x4
+  sata: true
+  # Same 4-socket UDIMM arithmetic as the 5050 SFF and the 600 G3 SFF above.
+
+hp-elitedesk-800-g5-mini:
+  ram_slots: 2
+  ram_max_gb: 64          # SODIMM DDR4-2666, 32 GB per slot
+  m2_nvme_slots: 2        # both PCIe 3.0 x4; WLAN socket excluded
+  sata: true
+
+hp-elitedesk-800-g6-mini:
+  ram_slots: 2
+  ram_max_gb: 64          # SODIMM DDR4-2933
+  m2_nvme_slots: 2        # both PCIe 3.0 x4; WLAN socket excluded
+  sata: true
+
+hp-prodesk-600-g6-mini:
+  ram_slots: 2
+  ram_max_gb: 64          # SODIMM DDR4-3200
+  m2_nvme_slots: 2        # PCIe x4; the separate M.2 2230 Wi-Fi socket excluded
+  sata: true
+
+lenovo-m70q-tiny:
+  ram_slots: 2
+  ram_max_gb: 64          # DDR4-2933, two SO-DIMM, dual-channel
+  m2_nvme_slots: 1        # PSREF lists two M.2 but one is WLAN (see Fields note)
+  sata: true              # 1 x 2.5" bay
+  # Gen 1 (DDR4). PSREF documents six generations under this name and Gen 5/6 are
+  # DDR5 — all reach 64 GB, so the ceiling is safe, but ram_type would not be.
+  # Titles at this source do not state the generation.
+
+lenovo-m80q-tiny:
+  ram_slots: 2
+  ram_max_gb: 64          # DDR4-2933 (Gen 1); Gen 3 is DDR5-4800, also 64 GB
+  m2_nvme_slots: 2        # PCIe NVMe; Gen 3 is PCIe 4.0 x4
+  sata: true              # 1 x 2.5" bay
+  # Same generation caveat as the m70q: the ceiling holds across generations,
+  # the memory type does not.
+
+lenovo-m70s-sff:
+  ram_slots: 4            # full-size UDIMM, not SODIMM
+  ram_max_gb: 128         # DDR4-2933 — the only entry here above 64 GB
+  m2_nvme_slots: 1        # PSREF: two M.2, one WLAN one SSD
+  sata: true              # 3.5" bay + optional 2.5"
+  # 128 GB is the vendor number and it is recorded as-is, but nothing in §2 reads
+  # a ceiling above 64 — the requirement is `>= 64`. It is here so the entry
+  # matches the documentation rather than the requirement.
+
 # ── Verification status ──────────────────────────────────────────────────────
 # Drafted 2026-09-21, reviewed against vendor documentation 2026-09-22. Nothing
 # here has been confirmed against a physical machine.
+#
+# Refurbish Canada entries added 2026-09-24. Sourced as follows:
+#   dell-optiplex-3060-micro   Dell specs page (32 GB max, stated explicitly)
+#   dell-optiplex-7010-micro   Dell owner's manual (2 SODIMM, 64 GB)
+#   dell-optiplex-5050-sff     Dell owner's manual (4 DIMM, 64 GB)
+#   lenovo-m70q-tiny           Lenovo PSREF
+#   lenovo-m80q-tiny           Lenovo PSREF (Gen 3 sheet; Gen 1 via search)
+#   lenovo-m70s-sff            Lenovo PSREF
+#   hp-elitedesk-800-g3-sff    hardware-corner, NOT an HP document
+#   hp-elitedesk-800-g5-mini   hardware-corner, corroborated by Kingston/HP search
+#   hp-elitedesk-800-g6-mini   hardware-corner, corroborated by Kingston/HP search
+#   hp-prodesk-600-g6-mini     hardware-corner, NOT an HP document
+#
+# The four HP entries are the weak ones and should be treated as the 400 G5 is
+# below. HP's QuickSpecs PDFs are image-based and would not extract, so these
+# come from a specs aggregator rather than from HP. The 64 GB figures are
+# consistent with every other 2-socket 8th-gen-and-later chassis in this file,
+# which is corroboration and not confirmation. Confirm before buying on one.
 #
 # Solid — a vendor document about this exact chassis says so:
 #   lenovo-m73-tiny            Lenovo PSREF

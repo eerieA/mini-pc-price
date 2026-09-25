@@ -21,6 +21,7 @@ from pathlib import Path
 import yaml
 
 import db
+import overrides
 import watches
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ def load_config():
         "chassis": read("chassis.yaml"),
         "sources": {s["id"]: s for s in read("sources.yaml")["sources"]},
         "watches": watches.load(CONFIG / "watch_urls.yaml"),
+        "overrides": overrides.load(CONFIG / "listing_overrides.yaml"),
     }
 
 
@@ -143,6 +145,9 @@ def format_listing(listing, price, terms, misses, rules):
                  f"{listing['storage_gb']}GB {listing['storage_type'].upper()}"
                  f"{shipped_marker}")
 
+    if listing.get("overridden"):
+        # A ranking that silently depends on an emailed answer is not checkable.
+        lines.append("           ! vendor-confirmed, not from the listing page")
     if misses:
         lines.append(f"           x {', '.join(misses)}")
     return lines
@@ -162,6 +167,9 @@ def build_report(listings, config):
         if reason:
             excluded.append((listing, reason))
             continue
+        # Hand-confirmed facts land here: after parsing, before scoring. The
+        # database keeps what the page said; the ranking uses what we know.
+        listing["overridden"] = overrides.apply(listing, config["overrides"])
         price, terms, misses = score(listing, config)
         ranked.append((price, listing, terms, misses))
     ranked.sort(key=lambda r: r[0])
@@ -254,16 +262,27 @@ def warning_lines(ranked, unparsed, config):
         else:
             warnings.append("no listing meets every requirement.")
 
-    if any("nvme unknown" in r[3] for r in ranked):
+    unstated = sum(1 for r in ranked if "nvme unknown" in r[3])
+    if unstated:
+        confirmed = sum(1 for r in ranked if r[1].get("overridden"))
+        detail = (f" {confirmed} confirmed NVMe by hand (see overrides below)."
+                  if confirmed else "")
         warnings.append(
-            "storage interface unstated by this vendor - listings say only "
-            "'SSD'. Every one pays nvme penalty; none is confirmed NVMe."
+            f"storage interface unstated by this vendor - listings say only "
+            f"'SSD'. {unstated} of {len(ranked)} pay the nvme penalty.{detail}"
         )
         if config["parts"]["storage"]["nvme_512gb"] is not None:
             warnings.append(
                 "parts.yaml now prices NVMe, so the flat penalty understates a "
                 "real cost. Add the cost_to_reach(NVMe) term (plan.md §2)."
             )
+
+    for entry in config["overrides"]:
+        provenance = overrides.describe([entry], entry["url"])
+        warnings.append(f"override in effect: {provenance}")
+        # Tail, not head: these URLs share a 60-character prefix and differ only
+        # in the handle's last few characters.
+        warnings.append(f"  ...{entry['url'][-64:]}")
 
     for watch in config["watches"]:
         classified = watches.classify(watch["url"])

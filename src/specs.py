@@ -27,6 +27,17 @@ CPU_RE = re.compile(r"\b(i[3579])[-\s]?(\d{4,5})([A-Z]{0,2})\b", re.I)
 # storage is written without the unit ("256 SSD"), which is what separates them.
 RAM_RE = re.compile(r"\b(\d{1,3})\s*GB\b", re.I)
 
+# A capacity that names itself as memory: "16GB RAM", "16GB DDR4", or the
+# unit-less "16RAM" one vendor writes. Preferred over RAM_RE because it cannot
+# be satisfied by a disk.
+RAM_LABELLED_RE = re.compile(
+    r"\b(\d{1,3})\s*GB\s*(?:of\s*)?(?:RAM|DDR\d|SODIMM|MEMORY)\b"
+    r"|\b(\d{1,3})\s*RAM\b", re.I)
+
+# What follows a capacity when that capacity is a disk.
+STORAGE_WORD_RE = re.compile(r"\s*(?:GB\s*)?(?:SSD|NVME|HDD|M\.?2|PCIE|SATA)\b",
+                             re.I)
+
 # "256 SSD", "256GB SSD", "512GB NVMe". The unit is optional, the medium is not.
 STORAGE_RE = re.compile(r"\b(\d{3,4})\s*(?:GB\s*)?(SSD|NVME|HDD)\b", re.I)
 
@@ -42,7 +53,12 @@ BRANDS = {
 
 # Model numbers: a bare 4-digit number, or an HP-style number plus generation
 # ("600 G3"), or a Lenovo-style letter-number ("M73").
-MODEL_RE = re.compile(r"\b(m\d{2,3})\b|\b(\d{3,4})\s*(g\d)?\b", re.I)
+# Lenovo's trailing letter is the form factor (q = Tiny, s = SFF), so it belongs
+# to the model number rather than being noise after it: m70q and m70s are
+# different chassis with different socket counts, and conflating them prices a
+# RAM upgrade ~$350 wrong. eTek stocked only an M73, which is why this pattern
+# originally stopped at the digits.
+MODEL_RE = re.compile(r"\b(m\d{2,3}[a-z]?)\b|\b(\d{3,4})\s*(g\d)?\b", re.I)
 
 
 def strip_html(body_html):
@@ -86,13 +102,34 @@ def parse_ram_gb(title, body_text=""):
     "Upgradeable to 16GB" and quotes DDR4 speeds, both of which match a bare
     capacity pattern.
     """
-    match = RAM_RE.search(title)
-    if match:
-        return int(match.group(1)), None
-    match = RAM_RE.search(body_text)
-    if match:
-        return int(match.group(1)), "ram_gb read from description, not title"
+    for text, note in ((title, None),
+                       (body_text, "ram_gb read from description, not title")):
+        size = _ram_in(text)
+        if size is not None:
+            return size, note
     return None, "no RAM capacity found"
+
+
+def _ram_in(text):
+    """The RAM capacity in one string, or None. Never the disk.
+
+    A bare `\\d+GB` is not enough to identify RAM. One vendor writes "16RAM"
+    with no unit at all, so the first `\\d+GB` in the title is the SSD -- which
+    produced a 256 GB "RAM" reading, a machine that appeared to need no memory
+    upgrade, and the cheapest qualifying listing in the report. So look for a
+    capacity that says what it is, and only then fall back to a bare one that is
+    not adjacent to a storage word.
+    """
+    match = RAM_LABELLED_RE.search(text)
+    if match:
+        return int(match.group(1) or match.group(2))
+
+    for match in RAM_RE.finditer(text):
+        trailing = text[match.end():match.end() + 12]
+        if STORAGE_WORD_RE.match(trailing):
+            continue  # "256GB NVMe SSD" -- a disk, whatever the title's order
+        return int(match.group(1))
+    return None
 
 
 def parse_storage(text):

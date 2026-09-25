@@ -229,3 +229,57 @@ def test_all_ten_real_listings_parse(chassis, cpus, aliases):
         r = specs.parse(title, "", chassis, cpus, aliases)
         assert r["parse_ok"] is True, f"{title!r}: {r['parse_notes']}"
         assert r["chassis_key"] == expected_key
+
+
+# ── Lenovo model suffixes (Refurbish Canada, 2026-09-24) ─────────────────────
+# eTek's only Lenovo was an M73, so MODEL_RE was written as `m\d{2,3}` and never
+# had to carry the letter. Lenovo's suffix is the form factor -- q is Tiny, s is
+# SFF -- so dropping it does not just lose precision, it loses the one segment
+# that distinguishes a 2-slot SODIMM machine from a 4-socket UDIMM one.
+@pytest.mark.parametrize("title, model, expected_key", [
+    ("Lenovo ThinkCentre M70s SFF Desktop PC | Intel Core i5-10400 2.9GHz",
+     "m70s", "lenovo-m70s-sff"),
+    ("Lenovo ThinkCentre M70q Gen 5 Tiny Desktop | Intel Core i5-14400T",
+     "m70q", "lenovo-m70q-tiny"),
+    ("Lenovo ThinkCentre M80q Gen 3 Tiny Desktop PC | Intel Core i5-12500",
+     "m80q", "lenovo-m80q-tiny"),
+    # Upper case in the wild, and the one that must keep working.
+    ("Lenovo THINKCENTRE M70Q Tiny Workstation, Intel Core i7-10700T",
+     "m70q", "lenovo-m70q-tiny"),
+    ("Lenovo M73 Tiny Desktop i5-4570T 8GB", "m73", "lenovo-m73-tiny"),
+])
+def test_lenovo_model_suffix_is_kept(title, model, expected_key, chassis, cpus,
+                                     aliases):
+    assert specs._model_number(title) == model
+    result = specs.parse(title, "", chassis, cpus, aliases)
+    assert result["chassis_key"] == expected_key
+
+
+# ── RAM must never be read from the storage figure ───────────────────────────
+# Refurbish Canada writes "16RAM" with no unit, so RAM_RE found nothing and took
+# the next \d+GB in the title -- which is the SSD. The result was ram_gb: 256, a
+# machine that appeared to need no memory upgrade and ranked as the cheapest
+# QUALIFYING listing at $449.99. A parser bug that invents a bargain is worse
+# than one that drops a row, because the output looks like the answer.
+@pytest.mark.parametrize("title, ram_gb, storage_gb", [
+    ("HP EliteDesk 800 G6 Mini | Intel Core i5-10500T (10th Gen, 6-Core) "
+     "| 16RAM | 256GB NVMe SSD | Windows 11 Pro", 16, 256),
+    ("Lenovo ThinkCentre M70q Tiny | i5-10400T | 8RAM | 512GB NVMe", 8, 512),
+    # The normal form must keep working.
+    ("Dell OptiPlex 7010 Micro i5-13500T 16GB 256GB SSD", 16, 256),
+    # RAM after storage in the title: order must not decide the answer.
+    ("HP ProDesk 600 G6 Mini | 256GB NVMe SSD | 32GB DDR4", 32, 256),
+])
+def test_ram_is_never_taken_from_the_storage_figure(title, ram_gb, storage_gb,
+                                                    chassis, cpus, aliases):
+    result = specs.parse(title, "", chassis, cpus, aliases)
+    assert result["ram_gb"] == ram_gb
+    assert result["storage_gb"] == storage_gb
+
+
+def test_ram_absent_is_none_not_the_disk(chassis, cpus, aliases):
+    """No RAM stated at all must stay unknown. Borrowing the disk size is how
+    the $449.99 phantom qualifier happened."""
+    result = specs.parse("Dell OptiPlex 7010 Micro i5-13500T 256GB NVMe SSD",
+                         "", chassis, cpus, aliases)
+    assert result["ram_gb"] is None

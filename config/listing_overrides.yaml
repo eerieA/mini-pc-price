@@ -1,0 +1,49 @@
+# Facts about a specific unit that the listing page does not state, keyed by URL.
+#
+# A vendor answers an email, a photo shows a label, a phone call settles a spec:
+# that is real information and it changes the ranking, but there is nowhere in
+# the parsed data to put it. The page still says what it always said, so the next
+# poll would overwrite anything written into `listings` directly.
+#
+# So overrides live here and are applied after parsing, before scoring. The
+# parsed value stays in the database untouched; this file changes what the report
+# concludes from it.
+#
+# ── Every override needs a provenance line ───────────────────────────────────
+# An override is a hand-entered claim that outranks observed data, which makes it
+# the most dangerous kind of entry in this repo -- a wrong one is invisible and
+# survives every poll. `asked`, `answered` and `via` are not decoration: they are
+# how a future reader decides whether to still believe it. An override with no
+# provenance should be deleted rather than trusted.
+#
+# Only override what a vendor actually confirmed. "The chassis supports it" is
+# not a confirmation about the unit for sale -- that conflation is the error
+# chassis.yaml's `m2_nvme_slots` note exists to prevent.
+
+overrides:
+  - url: "https://www.eteklaptop.ca/products/dell-optiflex-3090-ultra-i5-10500t-16gb-256-ssd-windows-11-pro-mini-computer-pc-refurbished"
+    storage_type: nvme
+    asked: 2026-09-24
+    answered: 2026-09-24
+    via: "vendor email"
+    note: >-
+      eTek confirmed the 256GB SSD is NVMe. The vendor's answer covered both
+      3080 Micro listings, not only the unit asked about. Their listings never
+      state an interface anywhere, so this is unrecoverable from the page.
+
+  - url: "https://www.eteklaptop.ca/products/dell-optiflex-3090-ultra-i5-10500t-16gb-256-ssd-windows-11-pro-mini-computer-pc-refurbished-copy"
+    storage_type: nvme
+    asked: 2026-09-24
+    answered: 2026-09-24
+    via: "vendor email"
+    note: >-
+      Same vendor answer as the listing above -- same chassis, same drive, one
+      question covered both. This is the $549.99 unit shipping 32GB.
+
+# ── Fields that may be overridden ────────────────────────────────────────────
+# Anything score() reads: storage_type, cpu_cores, ram_gb, ram_max_gb.
+#
+# `ram_max_gb` is the one to think twice about. It is normally derived from
+# chassis.yaml, which is a per-model fact; overriding it per listing asserts that
+# this particular unit differs from its model, which is rare and usually means
+# the chassis was misidentified instead.

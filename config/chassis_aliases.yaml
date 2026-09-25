@@ -40,14 +40,28 @@ dell:
   "3070": dell-optiplex-3070-micro
   "7070": dell-optiplex-7070-micro
   "3080": dell-optiplex-3080-micro   # titles say "Ultra"; see chassis.yaml
+  "3060": dell-optiplex-3060-micro
+  "7010": dell-optiplex-7010-micro   # the 2023 model, not the 2012 one
+  # "5050" is deliberately ABSENT. The OptiPlex 5050 ships as Micro, SFF and
+  # Tower, and only the SFF is entered in chassis.yaml -- a bare "5050" alias
+  # would resolve a 5050 Micro (2 SODIMM) to the SFF entry (4 UDIMM) and price
+  # its upgrade ~$350 wrong. A test caught exactly this. The same hazard applies
+  # to any model number whose form factors differ; see the note at the bottom.
 
 hp:
   "600g3": hp-prodesk-600-g3-sff
   "400g5": hp-prodesk-400-g5-mini
   "800g4": hp-elitedesk-800-g4-mini
+  "800g3": hp-elitedesk-800-g3-sff
+  "800g5": hp-elitedesk-800-g5-mini
+  "800g6": hp-elitedesk-800-g6-mini
+  "600g6": hp-prodesk-600-g6-mini
 
 lenovo:
   "m73": lenovo-m73-tiny
+  "m70q": lenovo-m70q-tiny
+  "m80q": lenovo-m80q-tiny
+  "m70s": lenovo-m70s-sff
 
 # Model numbers are quoted so YAML reads them as strings — unquoted, 3080 is an
 # integer and 600g3 is not, which would make the lookup type-dependent.
@@ -55,3 +69,25 @@ lenovo:
 # Note these keys are NOT canonical_key (§4). canonical_key is
 # dell:optiplex3070:i5-9500t:16gb:256gb and carries no form-factor segment, so
 # it cannot produce a chassis key and the two are built independently.
+
+# ── One model number can be several chassis ──────────────────────────────────
+# This table maps a model number to ONE chassis, and that is a real limitation
+# rather than a simplification: Dell and HP ship the same number as Micro, SFF
+# and Tower with different socket counts, and the RAM upgrade cost differs by
+# ~$350 between a 2-slot SODIMM machine and a 4-socket UDIMM one.
+#
+# An alias is therefore only safe when the number resolves to one form factor in
+# the inventory actually tracked. Where it does not, leave the alias out -- an
+# unknown chassis is held out of the ranking and surfaced (§5), which is the
+# outcome this table's whole design prefers to a confident guess. The "5050"
+# entry above was removed for exactly this reason.
+#
+# Two aliases already here carry the hazard unresolved, because both models ship
+# in a second form factor that is not currently in tracked inventory:
+#   600g3  -> ...-sff   (4 sockets). A 600 G3 Mini would price ~$350 wrong.
+#   800g4  -> ...-mini  (2 sockets). An 800 G4 SFF would price ~$350 wrong.
+# Both are correct for what is being polled today. If either form factor appears
+# in a new source, the fix is to split the alias -- not to pick the likelier one.
+#
+# Lenovo needs none of this: the suffix IS the form factor (q = Tiny, s = SFF),
+# so m70q and m70s are distinct keys with no ambiguity to resolve.
