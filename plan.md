@@ -1556,6 +1556,12 @@ that quietly does nothing is indistinguishable from one that found nothing (§8)
 effective-price ranking, the near-miss section, available baseline flags, Gmail
 via app password. Now it is useful.
 
+As built, this phase went further than the paragraph above in two ways, both
+argued where they belong rather than here: the send is gated on movement (§6),
+and the schedule moved off the desktop into CI so the history has no holes in it
+(§1). `chart.py` was added alongside, answering "is this price unusual for this
+machine" on demand rather than in the mail.
+
 The near-miss section (§6) is part of Phase 2, not a later polish. It is what
 makes `rules.yaml` tunable in practice: without seeing the machines that just
 missed — and what they would rank if the bar moved — adjusting a threshold is

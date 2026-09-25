@@ -203,9 +203,10 @@ fixed against day 1's bytes.
 
 ## What works today
 
-Phase 1: one tier-0 source (eTek's Shopify `products.json`), plus hand-seeded
-Shopify product URLs via `watch_urls.yaml`. No email, no ChangeDetection, no
-selectors.
+One tier-0 source (eTek's Shopify `products.json`), plus hand-seeded Shopify
+product URLs via `watch_urls.yaml`. Polls daily in GitHub Actions, emails a
+ranked digest when something moves, and charts price history on demand. No
+ChangeDetection and no selectors — those arrive with the first HTML source.
 
 A seeded URL that is not a Shopify product page is recorded as **pending** and
 named in the report's warnings rather than parsed — HTML sources need selectors,
