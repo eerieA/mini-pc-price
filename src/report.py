@@ -58,6 +58,19 @@ def format_listing(listing, price, terms, misses, rules):
         lines.append("           ! vendor-confirmed, not from the listing page")
     if misses:
         lines.append(f"           x {', '.join(misses)}")
+
+    # Deliberately NOT truncated and deliberately allowed to exceed WIDTH. Every
+    # other field here is trimmed to fit -- short_title drops boilerplate, the
+    # override warnings print a 64-character tail -- because a shortened title is
+    # still a title. A shortened URL is a broken link, so this is the one line in
+    # the report that sets its own width. On its own line and unwrapped is also
+    # what mail clients autolink, which is what makes it clickable (digest.py).
+    #
+    # Expect handles that contradict their own listing: eTek copies products and
+    # does not rename them, so the 9020 links to a "...3070...-copy" handle and
+    # both 3080s to "3090". Those URLs are right -- the handle is a unique key,
+    # never evidence about the hardware (config/chassis_aliases.yaml).
+    lines.append(f"           {listing['url']}")
     return lines
 
 
@@ -107,6 +120,7 @@ def build_report(listings, config):
         for listing, reason in excluded:
             out.append(f"  {short_title(listing['title_raw'], 50)}")
             out.append(f"           x {reason}")
+            out.append(f"           {listing['url']}")
 
     out.append("=" * WIDTH)
     out.extend(summary_lines(qualifiers, near_misses, rules))
