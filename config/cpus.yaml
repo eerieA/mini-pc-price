@@ -55,3 +55,63 @@ i5-10500T: {cores: 6, threads: 12, gen: 10, tdp: 35, nested_virt: true}
 # Corroborated by the vendor's own description, which states 6 cores / 12
 # threads and Intel UHD 630 — the detail that helped confirm those listings are
 # 3080 Micros rather than the "Ultra" their titles claim (chassis.yaml).
+
+# ── Researched from Refurbish Canada inventory, 2026-09-25 ───────────────────
+# These eight are the deliberate exception to "expand on demand" above. That
+# vendor was gated (plan.md §3) and is not polled, so nothing in tracked
+# inventory needs them today.
+#
+# They stay for the same reason its chassis entries do: they are facts about
+# silicon rather than about a vendor, they were already researched, and they are
+# the common off-lease parts that will reappear at every future source — eBay in
+# Phase 4 especially. The "on demand" rule exists to stop this table being
+# padded with chips nobody will meet, not to discard work already done.
+#
+# All eight verified against Intel ARK 2026-09-25; all support VT-x with EPT.
+
+# ── 7th gen, Kaby Lake ───────────────────────────────────────────────────────
+i5-7500:   {cores: 4, threads: 4,  gen: 7,  tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/97123/intel-core-i57500-processor-6m-cache-up-to-3-80-ghz/specifications.html
+
+# ── 8th gen, Coffee Lake ─────────────────────────────────────────────────────
+i5-8400T:  {cores: 6, threads: 6,  gen: 8,  tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/129940/intel-core-i58400t-processor-9m-cache-up-to-3-30-ghz/specifications.html
+
+# ── 9th gen, Coffee Lake Refresh ─────────────────────────────────────────────
+i5-9500:   {cores: 6, threads: 6,  gen: 9,  tdp: 65, nested_virt: true}
+# The 65 W part, not the 35 W i5-9500T already above. Both are 6c/6t, so the
+# ranking does not move — but a 65 W chip in a Tiny/Micro chassis is a sign the
+# title or the chassis is misidentified, the same signal the i5-8500 note flags.
+# https://www.intel.com/content/www/us/en/products/sku/134895/intel-core-i59500-processor-9m-cache-up-to-4-40-ghz/specifications.html
+
+# ── 10th gen, Comet Lake ─────────────────────────────────────────────────────
+i5-10400:  {cores: 6, threads: 12, gen: 10, tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/199271/intel-core-i510400-processor-12m-cache-up-to-4-30-ghz/specifications.html
+i7-10700T: {cores: 8, threads: 16, gen: 10, tdp: 35, nested_virt: true}
+# The most capable 35 W part in this table: 8c/16t in a Mini chassis.
+# https://www.intel.com/content/www/us/en/products/sku/199314/intel-core-i710700t-processor-16m-cache-up-to-4-50-ghz/specifications.html
+
+# ── 12th gen and later: `cores` means P-cores ────────────────────────────────
+# Alder Lake introduced a hybrid layout, and it breaks the assumption `cores`
+# was written under. Intel's own "Total Cores" for an i5-13500T is 14 — six
+# P-cores plus eight Gracemont E-cores — and recording that number would let
+# E-cores satisfy a requirement whose entire purpose is sizing an EVE-NG host.
+# E-cores have no SMT, lower clocks and a different scheduling story; a lab node
+# pinned to one is not the node this requirement is asking for.
+#
+# So `cores` here is the P-core count, and the ARK total is recorded alongside
+# it in a comment rather than in the field. This is the same choice chassis.yaml
+# makes with ram_max_gb: record the number the ranking should read, and keep the
+# other one where a human can see it and code cannot act on it.
+#
+# Revisit if a hybrid machine ever ranks close enough to matter — this trades a
+# little accuracy for the guarantee that cpu_cores never overstates the host.
+i5-12500:  {cores: 6, threads: 12, gen: 12, tdp: 65, nested_virt: true}
+# Not actually hybrid: 6 P-cores, zero E-cores, so ARK's total is 6 and there is
+# no discrepancy to resolve. Listed here for the generation, not the caveat.
+i5-13500T: {cores: 6, threads: 12, gen: 13, tdp: 35, nested_virt: true}
+# ARK total: 14 cores / 20 threads (6 P + 8 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230578/intel-core-i513500t-processor-24m-cache-up-to-4-60-ghz/specifications.html
+i5-14400T: {cores: 6, threads: 12, gen: 14, tdp: 35, nested_virt: true}
+# ARK total: 10 cores / 16 threads (6 P + 4 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/236790/intel-core-i5-processor-14400t-20m-cache-up-to-4-50-ghz/specifications.html
