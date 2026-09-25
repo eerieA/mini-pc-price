@@ -98,6 +98,7 @@ decision rather than trusting a year-old transcript.
 | `bapccanada-1p39obx-uniway.md` | r/bapccanada, Nov 2025 – Feb 2026 | 17 | 2026-09-21 | Uniway legitimate but marked up → excluded as a *source* |
 | `thinkpad-6pm59n-refurbio.md` | r/thinkpad, 2017 – 2023 | 7 | 2026-09-21 | REFURB.io positive in 2017, fulfillment/refund failures 2022+ → gated |
 | `Refurbishedguide-1sf2s9v-itrefurbs.md` | r/Refurbishedguide, Apr 2026 | 3 | 2026-09-21 | ITRefurbs: one multi-week shipping delay, thin evidence → kept, $25 adjustment |
+| `AskACanadian-1mmkv71-refurbishcanada.md` | r/AskACanadian, Aug – Dec 2025 | 5 | 2026-09-25 | Refurbish Canada: one first-hand fulfillment failure, corroborated by Trustpilot 1.9/5 (n=55) → gated |
 
 Two §3 vendor decisions rest on **no transcript**, because Reddit was not where
 the answer came from:

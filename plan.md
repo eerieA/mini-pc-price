@@ -592,10 +592,56 @@ A fit exclusion is the cleanest kind, since it does not require weighing anecdot
 at all. A transcript exists (`research/PersonalFinanceCanada-1hqtt0h-openbox.md`)
 but is not cited here — the reputation question never became load-bearing.
 
+#### Refurbish Canada — excluded, as a gate (2026-09-25)
+
+Found while looking for a second tier-0 source, and excluded on the same failure
+mode as REFURB.io. It is the worked example of re-opening this research for a
+specific decision, and the evidence is stronger than anything else in this
+section.
+
+The technical fit was excellent — Shopify `products.json`, 67 desktop mini/SFF
+listings, and **41 of them state NVMe or M.2 explicitly**, which is the field
+eTek never provides. Ten chassis were researched and entered in `chassis.yaml`
+on the strength of it.
+
+Then the vendor was checked, and:
+
+- **Trustpilot: 1.9/5 across 55 reviews, 77% one-star** (checked 2026-09-25).
+  Recurring complaints are shipping far beyond the stated 7–14 business days,
+  support ignoring email and phone, and refunds refused.
+- One first-hand Reddit report matching that sequence exactly: no tracking,
+  "label created by shipper" for a month, contact ignored, delivery only after a
+  PayPal dispute was *escalated*
+  (`research/AskACanadian-1mmkv71-refurbishcanada.md`).
+- Registered since 2017, so this is not fraud. It is fulfillment failure.
+
+**A 55-review aggregate is not the thin evidence the caveat below describes.**
+It is re-checkable at a URL and not self-selected, which puts it in the durable
+column with the Uniway markup finding. The vendor's own Judge.me widget is more
+favourable and is also the weaker source — a merchant installs and configures it
+on their own store, while Trustpilot is open to anyone.
+
+This is a gate, not an adjustment. §2 prices recourse risk in dollars precisely
+so a cheap listing can still win, but that logic assumes recourse eventually
+works. Where the reported failure is *support not responding until a payment
+processor intervenes*, there is no number that makes the listing worth buying,
+and the whole point of this project is to buy one machine.
+
+The chassis entries stay. They cost an afternoon, they are vendor-documented
+facts about hardware rather than about a vendor, and the models recur across
+every refurbisher — ProDesk 600 G6, EliteDesk 800 G5/G6, ThinkCentre M70q/M80q
+will appear again in Phase 3 and 4.
+
+Worth recording: their cheapest *qualifying* machine scored **$1,049.99** against
+eTek's $914.99, so this exclusion costs nothing on today's inventory. That is
+luck, not vindication — the decision would be the same if they had been cheaper.
+
 This leaves **two independent refurbishers**, eTek and ITRefurbs, both carrying a
 non-zero `source_adjustment` — the pattern, not a coincidence. Two searches
 produced exactly one new viable name, which is itself evidence about the size of
-the pool.
+the pool. A third search (2026-09-24) found four more Shopify storefronts and
+promoted none: two were already excluded, one carries almost no mini desktops,
+and this one gated.
 
 > **The exclusions are not all equally solid, and the difference matters more
 > than the sentiment does.** Two rest on facts anyone can re-verify at a URL:
@@ -610,9 +656,22 @@ the pool.
 > Vendor standing shifts — re-check before a purchase decision rather than
 > trusting a year-old assessment of either kind.
 >
-> This line of research is closed. Two searches produced exactly one new
-> viable name, and the marginal thread is worth less than the marginal listing.
-> Re-open only if a specific vendor becomes load-bearing for a specific decision.
+> This line of research is closed to *breadth*. Two searches produced exactly one
+> new viable name, and the marginal thread is worth less than the marginal
+> listing, so there is nothing to gain from sweeping for more vendors.
+>
+> It is not closed to *depth*. Re-open it whenever a specific vendor becomes
+> load-bearing for a specific decision — which is the normal case when a source
+> is being added, not an exception. Refurbish Canada in Phase 1b is the worked
+> example: the question "should this become a source" is precisely the trigger,
+> and the answer changed the decision (see below).
+>
+> Two practical notes from that episode. A review *aggregate* at a stable URL is
+> stronger evidence than the individual transcripts this section was written
+> around — re-checkable, not self-selected — so it belongs in the durable column
+> with the Uniway markup finding rather than the anecdotal one. And where a
+> merchant-installed review widget disagrees with an open platform, that is not
+> two readings to average: the store controls one of them.
 
 URLs and selectors live in config, never in code (v1 §3 was right about this).
 
@@ -1516,7 +1575,7 @@ That is a successful outcome, not an abandoned project — and manual seeding
 | Deploy on Proxmox (§19) | Run on desktop | The mini PC doesn't exist yet |
 | — | Selector health tracking | Silent breakage is the real failure mode |
 | Phase 1 as a stepping stone (§17) | Phase 1 as a standalone deliverable | Ten parsed listings may answer the buying question on their own |
-| Vendor research open-ended (§3) | Closed | Two searches produced one new viable name; durable exclusions separated from anecdotal ones |
+| Vendor research open-ended (§3) | Closed to breadth, open to depth | Sweeping for more vendors returns little; checking one vendor that a decision depends on is the normal case, and Refurbish Canada is the worked example — the check reversed an add-this-source decision |
 
 ### Kept from v1, unchanged
 

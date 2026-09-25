@@ -233,10 +233,14 @@ dell-optiplex-3080-micro:
   # load-bearing: no eTek listing states a storage interface at all (plan.md §5),
   # so every listing fails storage_nvme regardless of what the chassis supports.
 
-# ── Present in Refurbish Canada inventory, 2026-09-24 ────────────────────────
-# Ten models, researched against vendor documentation the same day. This source
-# states storage interfaces in its titles, unlike eTek — so unlike the eTek
-# block above, m2_nvme_slots here is rarely the field that decides a listing.
+# ── Researched from Refurbish Canada inventory, 2026-09-24 ───────────────────
+# Ten models, researched against vendor documentation the same day.
+#
+# That vendor was GATED the following day on fulfillment evidence (plan.md §3),
+# so it is not in sources.yaml and nothing here is polled from it today. The
+# entries stay because they are facts about hardware, not about a vendor, and
+# these models — ProDesk 600 G6, EliteDesk 800 G5/G6, ThinkCentre M70q/M80q —
+# recur at every refurbisher and will be needed again in Phase 3 and 4.
 
 dell-optiplex-3060-micro:
   ram_slots: 2
