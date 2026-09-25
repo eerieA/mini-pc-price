@@ -1,6 +1,7 @@
 # Mini-PC Deal Tracker — Plan (v2)
 
-> v1 of this plan is preserved as `plan-v1.md`. This revision keeps its good
+> v1 of this plan was a separate document, since deleted; §10 records what it
+> said and why each part changed. This revision keeps its good
 > structural instincts (ChangeDetection.io for the messy web plumbing, SQLite,
 > aggressive hardware normalization, phased rollout) and cuts the parts that are
 > over-built for a single-user tool with one concrete buying decision behind it.
@@ -1586,13 +1587,20 @@ That is a successful outcome, not an abandoned project — and manual seeding
 
 ## 10. What changed from v1, and why
 
+v1 was a separate document, `plan-v1.md`. It was deleted once v2 had been
+carrying the project for long enough to prove it, so this table is now the only
+record of what v1 said. Section numbers pointing into v1 were removed with it --
+the rows below name each decision in words instead, because a citation nobody can
+follow is worse than none. The file remains recoverable from git history if a row
+here ever proves too terse.
+
 | v1 | v2 | Reason |
 | --- | --- | --- |
-| Webhook push (§4) | REST poll | Webhooks fire on change; a gap-free observation log is the substrate for every §2 comparison, and cannot be backfilled |
-| FastAPI service (§16) | Two cron scripts | Nothing left to serve once pull-based |
-| Weighted deal score (§9) | Hard filter + effective price | Unfalsifiable weights vs. explainable rules |
+| Webhook push | REST poll | Webhooks fire on change; a gap-free observation log is the substrate for every §2 comparison, and cannot be backfilled |
+| FastAPI service | Two cron scripts | Nothing left to serve once pull-based |
+| Weighted deal score | Hard filter + effective price | Unfalsifiable weights vs. explainable rules |
 | Score as-listed | Score post-upgrade cost | RAM is cheap and upgradeable; this is the real comparison |
-| 12 sources at once (§3) | eTek first, rest phased | Prove the pipeline before breadth; start with the source least able to fail for non-pipeline reasons |
+| 12 sources at once | eTek first, rest phased | Prove the pipeline before breadth; start with the source least able to fail for non-pipeline reasons |
 | Uniway as Phase 1 target | Excluded entirely | Legitimate but consistently marked up — a bad *source*, not a bad vendor |
 | REFURB.io as a Phase 3 source | Excluded (gate) | Fulfillment and refund failures 2022+; the positive reports are from 2017 |
 | — | eTek added (Phase 1) | Shopify `products.json`; collection is entirely mini PCs |
@@ -1602,38 +1610,38 @@ That is a successful outcome, not an abandoned project — and manual seeding
 | — | Near-miss section in the digest (§6) | Exclusion *counts* cannot tell you whether the bar is set right; the machine that just missed can |
 | — | `compare_at_price` captured (§2, §4) | Weak signal, one column, and unbackfillable — an unrecorded observation is gone |
 | — | Street price from eBay sold listings (§2, Phase 4) | The only baseline that identifies an underpriced machine on first sighting |
-| Historical median as the key signal (§10) | Demoted to a tiebreaker | Not just sparse — self-referential: it cannot tell whether a price was ever good |
+| Historical median as the key signal | Demoted to a tiebreaker | Not just sparse — self-referential: it cannot tell whether a price was ever good |
 | — | Parser tier 0: vendor product JSON | Removes selector breakage entirely where it applies |
 | — | `listing_overrides.yaml` (§5) | A vendor's emailed answer is real evidence with nowhere to live: the page never changes, so the next poll would overwrite it. Applied after parsing, before scoring, with provenance required |
-| Refurbisher trust as a constant (§3) | `source_adjustment` in dollars | "Legit but slow support" is a price, not a gate |
-| Marketplace search scraping (§3) | Manual seeding + platform alerts | Value was never the issue; search-page scraping is |
-| Seller scoring function (§12) | Gates + dollar adjustment | Binary risk for a single purchase; dollars compare directly |
-| 7 tables (§5) | 2 tables | Add tables when they have a consumer |
-| 50–100 CPUs (§8) | ~15, + `nested_virt` | Hand-entry cost; the omitted field was the load-bearing one |
-| 3 alert tiers (§13) | Daily digest only | A digest that gets read beats alerts that get ignored |
-| Deploy on Proxmox (§19) | Run on desktop | The mini PC doesn't exist yet |
+| Refurbisher trust as a constant | `source_adjustment` in dollars | "Legit but slow support" is a price, not a gate |
+| Marketplace search scraping | Manual seeding + platform alerts | Value was never the issue; search-page scraping is |
+| Seller scoring function | Gates + dollar adjustment | Binary risk for a single purchase; dollars compare directly |
+| 7 tables | 2 tables | Add tables when they have a consumer |
+| 50–100 CPUs | ~15, + `nested_virt` | Hand-entry cost; the omitted field was the load-bearing one |
+| 3 alert tiers | Daily digest only | A digest that gets read beats alerts that get ignored |
+| Deploy on Proxmox | Run on desktop | The mini PC doesn't exist yet |
 | — | Selector health tracking | Silent breakage is the real failure mode |
-| Phase 1 as a stepping stone (§17) | Phase 1 as a standalone deliverable | Ten parsed listings may answer the buying question on their own |
-| Vendor research open-ended (§3) | Closed to breadth, open to depth | Sweeping for more vendors returns little; checking one vendor that a decision depends on is the normal case, and Refurbish Canada is the worked example — the check reversed an add-this-source decision |
+| Phase 1 as a stepping stone | Phase 1 as a standalone deliverable | Ten parsed listings may answer the buying question on their own |
+| Vendor research open-ended | Closed to breadth, open to depth | Sweeping for more vendors returns little; checking one vendor that a decision depends on is the normal case, and Refurbish Canada is the worked example — the check reversed an add-this-source decision |
 
 ### Kept from v1, unchanged
 
-The CD/custom-code boundary (§1), SQLite over Postgres (§5), hardware
-normalization (§6), the parser hierarchy (§7, with a tier added above it),
-canonical product keys
-and dedup (§11), digest-over-alerts (§15), config-not-code for retailer
-specifics (§3), start-with-one-retailer phasing (§17), and no search engine
-(§18).
+The CD/custom-code boundary, SQLite over Postgres, hardware normalization, the
+parser hierarchy (with a tier added above it), canonical product keys and dedup,
+digest-over-alerts, config-not-code for retailer specifics,
+start-with-one-retailer phasing, and no search engine. All of these are described
+in their own v2 sections above; they are listed here only to record that v1 got
+them right and nothing was reconsidered.
 
-v1 §10's historical median is kept but **demoted** — recorded from Phase 1, shown
-when it exists, and no longer the primary "is this cheap" signal. v1's underlying
+v1's historical median is kept but **demoted** — recorded from Phase 1, shown when
+it exists, and no longer the primary "is this cheap" signal. v1's underlying
 question was the right one; it just picked the weakest of the four available
 answers (§2).
 
-v1 §12's *premise* is kept too — marketplaces contain good sellers worth
-monitoring, and questionable sellers need explicit handling rather than blanket
-exclusion. Only the mechanism changed, from a scoring function to gates plus a
-dollar adjustment.
+v1's seller-scoring *premise* is kept too — marketplaces contain good sellers
+worth monitoring, and questionable sellers need explicit handling rather than
+blanket exclusion. Only the mechanism changed, from a scoring function to gates
+plus a dollar adjustment.
 
 ### Revised within v2
 

@@ -161,8 +161,8 @@ which arrive in Phase 3. A watch that quietly did nothing would be
 indistinguishable from one that found nothing.
 
 `plan.md` is the design of record and carries the reasoning behind every choice
-above; `plan-v1.md` is the superseded first draft, kept only to record what was
-rejected. `research/` holds the saved vendor evidence behind the source
+above; its §10 records what the superseded first draft said and why each part
+changed. `research/` holds the saved vendor evidence behind the source
 decisions.
 
 ## Conventions
