@@ -1233,12 +1233,14 @@ mini-pc-price/
 │   ├── cpus.yaml           # ~15 CPUs
 │   ├── parts.yaml          # RAM/NVMe upgrade costs
 │   ├── sellers.yaml        # gates + fulfillment adjustment
+│   ├── out_of_scope.yaml   # listings dismissed by hand, by URL (§9, Phase 3)
 │   └── rules.yaml          # the gate, tunable requirements + penalties (§2)
 ├── data/
 │   └── raw/                # persisted fetch responses, by source + timestamp (§1)
 ├── src/
 │   ├── poll.py             # fetch → parse → SQLite
 │   ├── ranking.py          # the shared filter-and-rank step (§2)
+│   ├── out_of_scope.py     # hand-dismissed listings, ahead of parsing (§9)
 │   ├── dotenv_lite.py      # reads a git-ignored .env; real env wins (§6)
 │   ├── report.py           # ranking → console (Phase 1, §9)
 │   ├── digest.py           # ranking → email (Phase 2)
@@ -1252,7 +1254,8 @@ mini-pc-price/
 ├── .github/workflows/
 │   └── daily.yml           # poll → digest → commit the history back (§1)
 ├── tests/
-│   └── test_specs.py       # the parser is what needs tests
+│   ├── test_specs.py       # the parser is what needs tests
+│   └── test_ranking.py     # out-of-scope and dedup partitions (Phase 3)
 └── README.md
 ```
 
@@ -1269,8 +1272,8 @@ call rather than in whichever was written first — but that extraction happens
 when the second consumer exists, not in anticipation of it.
 
 That extraction happened in Phase 2, and it went further than "one function":
-`ranking.py` holds `load_config`, `ram_upgrade_cost`, `score`, `gated`, `rank`
-and `split`, leaving `report.py` with rendering only. The test that it was
+`ranking.py` holds `load_config`, `ram_upgrade_cost`, `score`, `gated`, `rank`,
+`collapse_duplicates` and `split`, leaving `report.py` with rendering only. The test that it was
 behaviour-preserving is that `report.py`'s output was byte-identical before and
 after — worth doing, because a refactor that quietly changes a price is the kind
 this project can least afford.
@@ -1584,7 +1587,8 @@ worse than one without them:
 - `~street $340 (eBay sold, n=14)` — the reference price, Phase 4.
 - `↓ below 30d median` — needs an observation history that does not exist on a
   database a few days old.
-- the selector-health warning — Phase 3, with the first HTML source.
+- the selector-health warning — with the first HTML source, which Phase 3
+  turned out not to have (see below).
 
 The `(lower the bar → ranks 1st)` annotation is the one that needs no new data,
 only re-scoring with a requirement relaxed. It is deferred anyway, because with
@@ -1659,6 +1663,47 @@ The chassis entries this needs — 800 G3 SFF, 800 G4 Mini, 400 G5 Mini — are
 already in `chassis.yaml` from the Refurbish Canada research (§3), which is the
 second time that gated vendor's work has paid for itself.
 
+**As built (2026-09-27).** The inventory had turned over in two days — still 11
+products, a different mix — and the build followed the live data rather than the
+bullets above:
+
+- **"Not a candidate" is a hand-kept list of URLs, not a rule**
+  (`config/out_of_scope.yaml`). A dismissed listing is taken out ahead of the
+  parse check and printed as one line in an OUT OF SCOPE section, with its
+  reason. A title-keyword rule was the alternative and lost on a real listing:
+  "Lenovo ThinkStation P340 *Workstation*" is a P340 **Tiny** — the description
+  gives PSREF's dimensions — so excluding on "workstation" would have hidden a
+  candidate without anyone deciding to. The cost is that each new tower shows
+  up once as `parse_ok=false` until someone adds it. That is the §8 trade taken
+  the usual way round: a visible chore instead of an invisible error. Six towers
+  are listed today; dismissed listings are also left out of the digest's
+  what-moved comparison, so a gaming rig's price move does not send mail.
+- **The 800 G3 SFF's gap was TB, not the description.** It says "2 TB HDD", and
+  `parse_storage` only read GB. Storage now falls back to the description too,
+  as RAM does, though no current listing needs it.
+- **The description is trusted for the storage interface, narrowly.**
+  ITRefurbs' titles say "256 GB SSD" and their Key Features say "256GB NVMe
+  SSD". The description upgrades `ssd` to `nvme` only when it names the *same
+  capacity*, which separates a statement about this drive from boilerplate
+  about the product line, and the report marks such listings `NVMe per the
+  description`. This is not the chassis inference §5 forbids: the listing
+  states it. It removes the flat `storage_nvme` penalty for three listings.
+- **Two new entries, not three:** `lenovo-p340-tiny` (PSREF) and `i3-10300T`
+  (ARK). The 800 G4 alias carries the one-model-several-chassis hazard in
+  `chassis_aliases.yaml`, and ITRefurbs tested it: one 800 G4 is titled plain
+  "Desktop". Its stated dimensions are the Desktop Mini's, so the alias held,
+  after being checked rather than assumed.
+- **Multi-source seams.** The report header counted `listings[0]`'s source and
+  staleness was a single newest-observation check. Both are per source now, and
+  every listing line names its vendor. `poll.py` isolates sources, so one
+  vendor's endpoint failing no longer costs the other its observation (§1), and
+  the run still exits non-zero.
+
+Result, 2026-09-27: 5 of 11 rank, 6 are out of scope, none fail to parse. No
+ITRefurbs listing qualifies — the two 800 G4 Minis are 32 GB-capped near-misses
+at $586.99 and $599.99, and the P340 Tiny reaches 64 GB but has four cores —
+so the $914.99 eTek 3080 Micro is still the cheapest qualifier.
+
 Cross-retailer dedup via `canonical_key` (v1 §11, kept in full) becomes
 meaningful with multiple sources:
 
@@ -1670,7 +1715,11 @@ meaningful with multiple sources:
               $350                 $399
 ```
 
-One line in the digest, not two.
+One line in the digest, not two. The cheaper effective price leads and the other
+prints beneath it as `also <vendor> $<price> <url>` (`ranking.collapse_duplicates`).
+Folding happens only within a block, never across it: a hand override can make
+one unit qualify and its twin not, and a qualifier folded under a near-miss would
+be hidden in the block a reader skips.
 
 Worth tempering the expectation: both vendors stock HP EliteDesk 800 G4 Minis,
 but eTek's is an i7-8700T/16GB and ITRefurbs' is a different configuration, so

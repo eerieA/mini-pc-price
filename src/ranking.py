@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+import out_of_scope
 import overrides
 import watches
 
@@ -29,6 +30,7 @@ def load_config():
         "sources": {s["id"]: s for s in read("sources.yaml")["sources"]},
         "watches": watches.load(CONFIG / "watch_urls.yaml"),
         "overrides": overrides.load(CONFIG / "listing_overrides.yaml"),
+        "out_of_scope": out_of_scope.load(CONFIG / "out_of_scope.yaml"),
     }
 
 
@@ -111,17 +113,25 @@ def gated(listing, rules):
 
 
 def rank(listings, config):
-    """Partition listings into ranked / unparsed / excluded, cheapest first.
+    """Partition listings into ranked / unparsed / excluded / out of scope.
 
-    Returns (ranked, unparsed, excluded) where ranked is a list of
-    (effective_price, listing, terms, misses) sorted by price. A listing that
-    fails to parse is never silently dropped and a gated one carries its reason,
-    because both have to appear in the output (§9, §8).
+    Returns (ranked, unparsed, excluded, dismissed) where ranked is a list of
+    (effective_price, listing, terms, misses) sorted by price, with duplicate
+    configurations folded under the cheapest (see collapse_duplicates). A
+    listing that fails to parse is never silently dropped, and a gated or
+    out-of-scope one carries its reason, because every listing has to appear in
+    the output (§9, §8).
     """
     rules = config["rules"]
-    ranked, unparsed, excluded = [], [], []
+    ranked, unparsed, excluded, dismissed = [], [], [], []
 
     for listing in listings:
+        # First, ahead of parse_ok: most out-of-scope listings do not parse, and
+        # reporting them as parser failures is exactly what the list prevents.
+        reason = out_of_scope.reason_for(listing, config["out_of_scope"])
+        if reason:
+            dismissed.append((listing, reason))
+            continue
         if not listing["parse_ok"]:
             unparsed.append(listing)
             continue
@@ -136,7 +146,35 @@ def rank(listings, config):
         ranked.append((price, listing, terms, misses))
 
     ranked.sort(key=lambda r: r[0])
-    return ranked, unparsed, excluded
+    return collapse_duplicates(ranked), unparsed, excluded, dismissed
+
+
+def collapse_duplicates(ranked):
+    """One line per configuration across vendors (§4 canonical_key, §9).
+
+    `ranked` must already be sorted, so the first listing seen for a key is the
+    cheapest effective price and leads; the rest go on its `also_at` as
+    (effective_price, listing) and are rendered beneath it.
+
+    Only within a block. The key is the configuration, but a hand override can
+    make one unit qualify and its twin not, and folding a qualifier under a
+    near-miss would hide it in the block a reader treats as "cannot do the job".
+    """
+    leads, collapsed = {}, []
+    for row in ranked:
+        price, listing, _, misses = row
+        listing["also_at"] = []
+        key = listing["canonical_key"]
+        if key is None:
+            collapsed.append(row)
+            continue
+        lead = leads.get((key, bool(misses)))
+        if lead is None:
+            leads[(key, bool(misses))] = listing
+            collapsed.append(row)
+        else:
+            lead["also_at"].append((price, listing))
+    return collapsed
 
 
 def split(ranked):

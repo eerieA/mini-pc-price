@@ -283,3 +283,112 @@ def test_ram_absent_is_none_not_the_disk(chassis, cpus, aliases):
     result = specs.parse("Dell OptiPlex 7010 Micro i5-13500T 256GB NVMe SSD",
                          "", chassis, cpus, aliases)
     assert result["ram_gb"] is None
+
+
+# ── ITRefurbs (Phase 3, 2026-09-27) ──────────────────────────────────────────
+# A second vendor's copy, and a different shape from eTek's: a condition prefix
+# ("Refurbished (Excellent) - "), specs in a parenthesised slash list, capacities
+# in TB, and a description whose Key Features block states the drive interface.
+# Titles verbatim from https://itrefurbs.ca/collections/refurbished-desktops.
+
+ITREFURBS_CASES = [
+    ("Refurbished (Excellent) - HP EliteDesk 800 G4 Desktop Mini w/  Keyboard and "
+     "Mouse (Intel i5-8500 / 16 GB RAM / 256 GB SSD / Windows 11 Pro)",
+     "hp-elitedesk-800-g4-mini", 16, 256),
+    # No form-factor word at all. Resolved to the Mini because the description's
+    # dimensions (6.97 x 6.89 x 1.34 in) are the Desktop Mini's -- see the 800g4
+    # note in chassis_aliases.yaml.
+    ("Refurbished (Excellent) - HP EliteDesk 800 G4 Desktop (Intel i5-8500 / 8 GB "
+     "RAM / 256 GB SSD / Windows 11 Pro)",
+     "hp-elitedesk-800-g4-mini", 8, 256),
+    ("Refurbished (Excellent) - HP ProDesk 400 G5 Tiny MiniPC - Black (Intel "
+     "i5-9500T / 8 GB RAM / 256 SSD / Windows 11 Professional)",
+     "hp-prodesk-400-g5-mini", 8, 256),
+    # The one that failed before Phase 3: storage in TB.
+    ("Refurbished (Excellent) - HP EliteDesk 800 G3 SFF SFF Desktop (Intel i5-7500 "
+     "/ 8 GB RAM / 2 TB HDD / Windows 10 Pro)",
+     "hp-elitedesk-800-g3-sff", 8, 2000),
+    # Titled "Workstation", and a Tiny: the description gives 7" x 7.2" x 1.4",
+    # which is PSREF's P340 Tiny. A title-keyword exclusion on "workstation"
+    # would have hidden this machine -- the reason out_of_scope.yaml is a list
+    # of URLs rather than a rule.
+    ("Refurbished (Excellent) - Lenovo ThinkStation P340 Workstation - Raven Black "
+     "(Intel i3-10300T / 16 GB RAM / 256 GB SSD / Quadro P620 / Windows 11 Pro)",
+     "lenovo-p340-tiny", 16, 256),
+]
+
+
+@pytest.mark.parametrize("title, expected_key, ram_gb, storage_gb", ITREFURBS_CASES)
+def test_itrefurbs_listings_parse(title, expected_key, ram_gb, storage_gb,
+                                  chassis, cpus, aliases):
+    result = specs.parse(title, "", chassis, cpus, aliases)
+    assert result["parse_ok"] is True, result["parse_notes"]
+    assert result["chassis_key"] == expected_key
+    assert (result["ram_gb"], result["storage_gb"]) == (ram_gb, storage_gb)
+
+
+@pytest.mark.parametrize("title, expected", [
+    ("HP EliteDesk 800 G3 SFF (Intel i5-7500 / 8 GB RAM / 2 TB HDD)", (2000, "hdd")),
+    ("Asus V500 (i7-13620H / 16 Gb RAM / 1 TB SSD)", (1000, "ssd")),
+    ("MXG Astra (Ryzen 7 9800x3D / 32 GB RAM / 2 TB NVMe)", (2000, "nvme")),
+])
+def test_parse_storage_reads_terabytes(title, expected):
+    assert specs.parse_storage(title) == expected
+
+
+def test_ram_is_not_the_terabyte_disk(chassis, cpus, aliases):
+    result = specs.parse("HP EliteDesk 800 G3 SFF (Intel i5-7500 / 8 GB RAM / "
+                         "2 TB HDD)", "", chassis, cpus, aliases)
+    assert result["ram_gb"] == 8
+
+
+# ── Storage interface from the description ───────────────────────────────────
+# ITRefurbs' titles say "256 GB SSD"; their Key Features block says "256GB NVMe
+# SSD". The description is trusted for the interface only when it names the SAME
+# capacity the title does. That is what separates a statement about this drive
+# from boilerplate about the product line ("supports up to 2TB NVMe").
+
+ITREFURBS_800G4_BODY = (
+    "<p>Storage: 256 GB SSD</p><h3>Key Features</h3><p>Memory: 16GB DDR4 RAM "
+    "Storage: 256GB NVMe SSD Graphics: Intel UHD Graphics 630</p>")
+
+
+def test_nvme_read_from_description_at_the_same_capacity(chassis, cpus, aliases):
+    title = ("Refurbished (Excellent) - HP EliteDesk 800 G4 Desktop Mini (Intel "
+             "i5-8500 / 16 GB RAM / 256 GB SSD / Windows 11 Pro)")
+    result = specs.parse(title, ITREFURBS_800G4_BODY, chassis, cpus, aliases)
+    assert result["storage_type"] == "nvme"
+    assert specs.NVME_FROM_DESCRIPTION in result["parse_notes"]
+
+
+@pytest.mark.parametrize("body", [
+    "Supports up to 2TB NVMe SSD in the M.2 slot",       # a different capacity
+    "M.2 PCIe NVMe slot for fast storage",               # no capacity at all
+    "Storage: 256 GB SSD",                               # no interface stated
+])
+def test_nvme_in_description_at_another_capacity_is_ignored(body, chassis, cpus,
+                                                            aliases):
+    title = "HP EliteDesk 800 G4 Mini (Intel i5-8500 / 16 GB RAM / 256 GB SSD)"
+    result = specs.parse(title, body, chassis, cpus, aliases)
+    assert result["storage_type"] == "ssd"
+
+
+def test_description_never_downgrades_a_title_that_says_nvme(chassis, cpus, aliases):
+    title = "HP ProDesk 600 G6 Mini | i5-10500T | 16GB | 512GB NVMe SSD"
+    result = specs.parse(title, "Storage: 512 GB SSD", chassis, cpus, aliases)
+    assert result["storage_type"] == "nvme"
+
+
+def test_storage_falls_back_to_description_with_a_note(chassis, cpus, aliases):
+    title = "HP EliteDesk 800 G4 Mini Desktop i5-8500 16GB Windows 11 Pro"
+    result = specs.parse(title, "<p>Storage: 256GB SSD</p>", chassis, cpus, aliases)
+    assert result["storage_gb"] == 256
+    assert result["parse_ok"] is True
+    assert "storage read from description" in result["parse_notes"]
+
+
+def test_lenovo_thinkstation_model_number():
+    """ThinkStation numbers are P-prefixed. "\b340" cannot match inside "P340",
+    so without the prefix the model regex finds nothing at all."""
+    assert specs._model_number("Lenovo ThinkStation P340 Workstation (Intel "
+                               "i3-10300T / 16 GB RAM / 256 GB SSD)") == "p340"

@@ -174,11 +174,22 @@ def main(argv=None):
     # ranking twice rather than by relaxing that check (src/overrides.py).
     ranking_result = ranking.rank(listings, config)
     qualifiers, _ = ranking.split(ranking_result[0])
-    qualifying_urls = {listing["url"] for _, listing, _, _ in qualifiers}
+    # A duplicate folded under a qualifier qualifies too -- collapse_duplicates
+    # never folds across the qualifier/near-miss line.
+    qualifying_urls = {l["url"] for _, lead, _, _ in qualifiers
+                       for l in [lead, *(o for _, o in lead["also_at"])]}
 
+    # Out-of-scope listings are left out of the comparison on both sides. A
+    # gaming tower's price move is not a reason to send, and dropping one from
+    # only the current side would report it as "gone" the day it was dismissed.
+    dismissed = {l["url"] for l, _ in ranking_result[3]}
     coverage_status = coverage.report(conn)
     previous = changes.load_previous(conn)
-    current = changes.snapshot(listings, qualifying_urls)
+    if previous is not None:
+        previous["listings"] = {url: v for url, v in previous["listings"].items()
+                                if url not in dismissed}
+    current = changes.snapshot([l for l in listings if l["url"] not in dismissed],
+                               qualifying_urls)
     moved = changes.diff(previous, current)
 
     # A dead poll must not be silenced by "nothing changed" -- when nothing is

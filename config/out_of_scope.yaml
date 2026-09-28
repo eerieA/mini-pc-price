@@ -1,0 +1,43 @@
+# Listings judged by hand not to be candidates (plan.md §9, Phase 3).
+#
+# ITRefurbs' collection mixes minis with towers and gaming rigs. Those are not
+# parse failures, and reporting them as parse failures every day would bury the
+# warning that catches real ones (§8). An entry here moves a listing to a one-line
+# OUT OF SCOPE section of the report instead.
+#
+# Keyed by URL and written by hand, never by a title rule: ITRefurbs' "ThinkStation
+# P340 Workstation" is a P340 Tiny, and a rule on "workstation" would have hidden
+# it (src/out_of_scope.py). So a new tower appears once as parse_ok=false, and is
+# added here after someone has looked at it.
+#
+# Out of scope means the FORM FACTOR (towers stay out, plan.md §3), not a machine
+# that merely misses a requirement -- those rank as near-misses, which is how
+# rules.yaml stays tunable. Don't list a mini here because it is a poor buy.
+#
+# `reason` is required; `decided` is for whoever re-reads this later. Entries
+# for listings that have sold out are harmless and can be pruned whenever.
+
+out_of_scope:
+  - url: "https://itrefurbs.ca/products/open-box-dell-tower-dect1250-5050blk-pus-desktop-black-intel-core-ultra-5-225-16gb-ram-512-gb-ssd-windows-11-home"
+    reason: "tower (Dell Tower ECT1250)"
+    decided: 2026-09-27
+
+  - url: "https://itrefurbs.ca/products/open-box-asus-rog-gm700-58l-gm700tz-1b977-gaming-desktop-black-amd-ryzen™-9-9950x-3d-32-gb-ram-2-tb-ssd-radeon™-rx-9070-xt-prime-windows-11-home-64-bit"
+    reason: "gaming tower (Asus ROG GM700)"
+    decided: 2026-09-27
+
+  - url: "https://itrefurbs.ca/products/refurbished-excellent-asus-v500-mini-tower-v500mv-is706-desktop-black-intel®-core™-i7-13620h-16-gb-ram-1-tb-ssd-windows-11-home-64-bit"
+    reason: "mini tower (Asus V500)"
+    decided: 2026-09-27
+
+  - url: "https://itrefurbs.ca/products/open-box-asus-rog-g700-58l-g700tf-is978ti-gaming-desktop-black-intel®-core™-ultra-9-285k-32-gb-ram-2-tb-ssd-geforce-rtx™-5070ti-prime-windows-11-home-64-bit"
+    reason: "gaming tower (Asus ROG G700)"
+    decided: 2026-09-27
+
+  - url: "https://itrefurbs.ca/products/brand-new-mxg-astra-desktop-amd-ryzen-7-9800x3d-32-gb-ram-2-tb-nvme-radeon-rx-9070-xt-windows-11-pro"
+    reason: "gaming tower (MXG Astra, ATX board, 360mm AIO)"
+    decided: 2026-09-27
+
+  - url: "https://itrefurbs.ca/products/refurbished-excellent-dell-inspiron-3030-desktop-black-intel-core-i5-14400-16-gb-ram-1-tb-ssd-windows-11-home-with-keyboard-mouse"
+    reason: "tower (Dell Inspiron 3030)"
+    decided: 2026-09-27

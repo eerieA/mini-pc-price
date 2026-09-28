@@ -5,7 +5,7 @@ Run by hand against whatever poll.py has collected:
     python src/report.py
 
 Not a second digest implementation. It prints the same ranking §6 describes,
-minus the email, the baselines that need history and the multi-source sections.
+minus the email and the baselines that need history.
 When digest.py arrives in Phase 2 the filter-and-rank step moves somewhere both
 can call it -- but that extraction happens when the second consumer exists, not
 in anticipation of it (§7).
@@ -15,6 +15,7 @@ is cp1252 and printing a single arrow or check mark raises UnicodeEncodeError,
 killing the run.
 """
 
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,7 @@ from pathlib import Path
 import db
 import overrides
 import ranking
+import specs
 import watches
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,18 +31,28 @@ WIDTH = 78
 
 
 
+# ITRefurbs opens every title with its condition grade. Left in, it fills the
+# 44 characters and every line reads "Refurbished (Excellent) - HP EliteDesk
+# 800..." with the model cut off. Display only: title_raw keeps it.
+CONDITION_PREFIX_RE = re.compile(
+    r"^(?:Refurbished\s*\([^)]*\)|Open Box|Brand New)\s*-\s*", re.I)
+
+
 def short_title(title, limit=44):
     """Trim to the last whole word that fits. Vendor titles run to 90 characters
     of boilerplate ("Windows 11 Pro ... Refurbished") and the model is at the
     front, so the tail is what to lose."""
-    title = " ".join(title.split())
+    title = CONDITION_PREFIX_RE.sub("", " ".join(title.split()))
     if len(title) <= limit:
         return title
     return title[:limit].rsplit(" ", 1)[0] + "..."
 
 
 def format_listing(listing, price, terms, misses, rules):
-    lines = [f"  ${price:<8.2f} {short_title(listing['title_raw'])}"]
+    # The source is on the first line because two vendors now compete for the
+    # same rank, and "+ 25 src" in the arithmetic does not say which one.
+    lines = [f"  ${price:<8.2f} {listing['source_id']:<9} "
+             f"{short_title(listing['title_raw'])}"]
     lines.append(f"           {' '.join(terms)}")
 
     ceiling = listing["ram_max_gb"]
@@ -57,6 +69,10 @@ def format_listing(listing, price, terms, misses, rules):
     if listing.get("overridden"):
         # A ranking that silently depends on an emailed answer is not checkable.
         lines.append("           ! vendor-confirmed, not from the listing page")
+    if specs.NVME_FROM_DESCRIPTION in (listing.get("parse_notes") or ""):
+        # Same reason as the line above: the title says only "SSD", so the
+        # ranking rests on the description's word for it.
+        lines.append("           ! NVMe per the description, not the title")
     if misses:
         lines.append(f"           x {', '.join(misses)}")
 
@@ -72,6 +88,13 @@ def format_listing(listing, price, terms, misses, rules):
     # both 3080s to "3090". Those URLs are right -- the handle is a unique key,
     # never evidence about the hardware (config/chassis_aliases.yaml).
     lines.append(f"           {listing['url']}")
+
+    # The same configuration at another vendor, folded here by
+    # ranking.collapse_duplicates. Kept on its own line with its URL: it is
+    # still a listing someone may prefer to buy from.
+    for other_price, other in listing.get("also_at", []):
+        lines.append(f"           also {other['source_id']} ${other_price:.2f} "
+                     f"{other['url']}")
     return lines
 
 
@@ -89,18 +112,13 @@ def build_report(listings, config, ranked=None):
     out = []
 
     if ranked is None:
-        ranked, unparsed, excluded = ranking.rank(listings, config)
+        ranked, unparsed, excluded, dismissed = ranking.rank(listings, config)
     else:
-        ranked, unparsed, excluded = ranked
+        ranked, unparsed, excluded, dismissed = ranked
     qualifiers, near_misses = ranking.split(ranked)
-
-    source = listings[0]["source_id"] if listings else "none"
-    fetched = listings[0]["observed_at"][:16].replace("T", " ") if listings else "-"
-    parsed_ok = sum(1 for l in listings if l["parse_ok"])
     requirements = rules["requirements"]
 
-    out.append(f"{source} | {len(listings)} listings | fetched {fetched} | "
-               f"parse_ok {parsed_ok}/{len(listings)}")
+    out.append(header_line(listings, dismissed))
     out.append(
         f"rules.yaml: ram>={requirements['ram_max_gb']['min']}GB"
         f"({requirements['ram_max_gb']['else_penalty']}) "
@@ -134,11 +152,57 @@ def build_report(listings, config, ranked=None):
             out.append(f"           x {reason}")
             out.append(f"           {listing['url']}")
 
+    if dismissed:
+        # One line each and no URL: these were looked at and set aside by hand,
+        # so they are listed to stay visible (§9), not to be acted on. The URL
+        # is in the file that dismissed them.
+        out.append("")
+        out.append(f"OUT OF SCOPE ({len(dismissed)}) - config/out_of_scope.yaml")
+        out.append("-" * WIDTH)
+        for listing, reason in dismissed:
+            out.append(f"  {listing['source_id']:<9} "
+                       f"{short_title(listing['title_raw'], 40):<43} {reason}")
+
     out.append("=" * WIDTH)
     out.extend(summary_lines(qualifiers, near_misses, rules))
     out.extend(warning_lines(ranked, unparsed, config,
-                             stale=_stale_hours(listings)))
+                             stale=_stale_sources(listings)))
     return "\n".join(out)
+
+
+def header_line(listings, dismissed):
+    """Per source: listings, how many parsed, how many were set aside by hand.
+
+    Out-of-scope listings are counted apart from parse failures because they
+    are not failures -- lumping them in would make a healthy source read as a
+    broken one.
+    """
+    set_aside = {l["url"] for l, _ in dismissed}
+    parts = []
+    for source in sorted({l["source_id"] for l in listings}):
+        rows = [l for l in listings if l["source_id"] == source]
+        ok = sum(1 for l in rows if l["parse_ok"] and l["url"] not in set_aside)
+        out = sum(1 for l in rows if l["url"] in set_aside)
+        detail = f"{ok} ok" + (f", {out} out of scope" if out else "")
+        parts.append(f"{source} {len(rows)} ({detail})")
+    newest = max((l["observed_at"] for l in listings), default=None)
+    fetched = newest[:16].replace("T", " ") if newest else "-"
+    return f"{' | '.join(parts) or 'no listings'} | fetched {fetched}"
+
+
+def _stale_sources(listings):
+    """{source_id: hours since its newest observation}, stale sources only.
+
+    Per source because poll.py polls each one independently: one vendor's
+    endpoint failing leaves the other's prices fresh, and a single newest-
+    observation check would read that as a healthy poll.
+    """
+    stale = {}
+    for source in sorted({l["source_id"] for l in listings}):
+        hours = _stale_hours([l for l in listings if l["source_id"] == source])
+        if hours is not None:
+            stale[source] = hours
+    return stale
 
 
 def _stale_hours(listings):
@@ -193,13 +257,13 @@ def warning_lines(ranked, unparsed, config, stale=None):
     to reconstruct from the ranking."""
     warnings = []
 
-    if stale is not None:
+    for source, hours in (stale or {}).items():
         # First, because it qualifies everything below it: on stale data the
         # prices, the ranking and the gap are all as old as the last poll.
         warnings.append(
-            f"PRICES ARE {stale:.0f} HOURS OLD - the last poll did not run or "
-            f"failed. Every price and ranking below is from that poll; check "
-            f"logs/ for the failure before acting on it."
+            f"{source.upper()} PRICES ARE {hours:.0f} HOURS OLD - its last poll "
+            f"did not run or failed. Its prices and ranks below are from that "
+            f"poll; check logs/ for the failure before acting on them."
         )
 
     if ranked and not [r for r in ranked if not r[3]]:
@@ -218,8 +282,8 @@ def warning_lines(ranked, unparsed, config, stale=None):
         detail = (f" {confirmed} confirmed NVMe by hand (see overrides below)."
                   if confirmed else "")
         warnings.append(
-            f"storage interface unstated by this vendor - listings say only "
-            f"'SSD'. {unstated} of {len(ranked)} pay the nvme penalty.{detail}"
+            f"storage interface unstated - listings say only 'SSD'. "
+            f"{unstated} of {len(ranked)} pay the nvme penalty.{detail}"
         )
         if config["parts"]["storage"]["nvme_512gb"] is not None:
             warnings.append(

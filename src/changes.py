@@ -18,6 +18,8 @@ the database is what Actions commits and what you pull back (§7).
 
 import json
 
+import report
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS digest_state (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
@@ -169,7 +171,4 @@ def format_changes(changes, previous, width=78):
 
 
 def _short(title, limit=42):
-    title = " ".join(title.split())
-    if len(title) <= limit:
-        return title
-    return title[:limit].rsplit(" ", 1)[0] + "..."
+    return report.short_title(title, limit)

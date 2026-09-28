@@ -163,6 +163,7 @@ Thresholds, penalties, vendor adjustments and hardware facts live in
 | `cpus.yaml` | Cores, threads and `nested_virt` per CPU |
 | `parts.yaml` | RAM and NVMe upgrade costs, with the date they were priced |
 | `listing_overrides.yaml` | Vendor-confirmed facts a listing page does not state |
+| `out_of_scope.yaml` | Listings judged by hand not to be candidates (towers), by URL |
 | `digest.yaml` | Where the daily email goes (no secrets) |
 
 Two config rules worth knowing before editing:
@@ -203,14 +204,19 @@ fixed against day 1's bytes.
 
 ## What works today
 
-One tier-0 source (eTek's Shopify `products.json`), plus hand-seeded Shopify
-product URLs via `watch_urls.yaml`. Polls daily in GitHub Actions, emails a
-ranked digest when something moves, and charts price history on demand. No
-ChangeDetection and no selectors — those arrive with the first HTML source.
+Two tier-0 sources (eTek's and ITRefurbs' Shopify `products.json`), plus
+hand-seeded Shopify product URLs via `watch_urls.yaml`. Polls daily in GitHub
+Actions, emails a ranked digest when something moves, and charts price history
+on demand. No ChangeDetection and no selectors — those arrive with the first
+HTML source.
+
+When ITRefurbs lists a new tower, it shows up once in the warnings as
+`parse_ok=false`. Add its URL and a reason to `config/out_of_scope.yaml` and it
+moves to a one-line OUT OF SCOPE section.
 
 A seeded URL that is not a Shopify product page is recorded as **pending** and
 named in the report's warnings rather than parsed — HTML sources need selectors,
-which arrive in Phase 3. A watch that quietly did nothing would be
+which no source has needed yet. A watch that quietly did nothing would be
 indistinguishable from one that found nothing.
 
 `plan.md` is the design of record and carries the reasoning behind every choice

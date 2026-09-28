@@ -1,7 +1,7 @@
 # Where listings come from (plan.md §3), and what each vendor's risk is worth.
 #
-# Phase 1 is one source. The rest are listed as comments rather than stubs so
-# the §3 decisions are visible to anyone reading the config, not only the plan.
+# The sources not yet added are listed as comments rather than stubs so the §3
+# decisions are visible to anyone reading the config, not only the plan.
 
 sources:
   - id: etek
@@ -27,6 +27,26 @@ sources:
     # The number matters here because eTek's binding requirements — nested
     # virtualisation, the chassis RAM ceiling — are only fully verifiable after
     # the box is open, which is exactly when the restocking fee applies.
+
+  - id: itrefurbs
+    name: ITRefurbs
+    type: refurbisher
+    # Also Shopify tier-0 (confirmed 2026-09-25), so no ChangeDetection and no
+    # selectors -- the premise plan.md §9 originally gave Phase 3.
+    products_json: "https://itrefurbs.ca/collections/refurbished-desktops/products.json?limit=250"
+    product_url_base: "https://itrefurbs.ca/products"
+    discovery_urls:
+      - "https://itrefurbs.ca/collections/refurbished-desktops"
+    # A mixed collection: minis beside towers and gaming rigs. The towers are
+    # dismissed by URL in out_of_scope.yaml rather than reported as parse
+    # failures, and a new one surfaces once as parse_ok=false until it is.
+
+    source_adjustment: 25
+    # One first-hand report of multi-week shipping delays, attributed to QC
+    # repairing a fault before shipping (plan.md §3,
+    # research/Refurbishedguide-1sf2s9v-itrefurbs.md). Slow, not a failure to
+    # deliver or refund -- a price, not a gate. Unlike eTek's $40 it is not
+    # anchored to a published number, and it is held loosely for that reason.
 
 # ── The collection handle IS the selector ────────────────────────────────────
 # Shopify answers a wrong or retired handle with HTTP 200 and {"products": []},
@@ -61,6 +81,3 @@ sources:
 #                     manufacturer warranty, clean RMA, source_adjustment 0 —
 #                     but JSON-LD parsing makes it the harder thing to build
 #                     first, and Phase 1 learns nothing that requires it.
-#   itrefurbs         Phase 3, source_adjustment 25 (one report of multi-week
-#                     shipping delays). The first source needing ChangeDetection,
-#                     which is the condition §1 defers the container on.

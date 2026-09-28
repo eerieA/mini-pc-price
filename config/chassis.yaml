@@ -320,6 +320,23 @@ lenovo-m70s-sff:
   # a ceiling above 64 — the requirement is `>= 64`. It is here so the entry
   # matches the documentation rather than the requirement.
 
+# ── Present in ITRefurbs inventory, 2026-09-27 ───────────────────────────────
+
+lenovo-p340-tiny:
+  ram_slots: 2
+  ram_max_gb: 64          # 2 x 32 GB DDR4-2933 SO-DIMM
+  m2_nvme_slots: 2        # "2x M.2 PCIe SSD", offered only as PCIe NVMe
+  sata: false             # "No bays" -- M.2 only
+  # Lenovo PSREF, ThinkStation P340 Tiny (read 2026-09-27): "Up to 64GB (2x 32GB
+  # DDR4 SO-DIMM)", "Two DDR4 SO-DIMM slots", "Up to two drives, 2x M.2 PCIe
+  # SSD", "Bays: No bays", dimensions 37 x 182.9 x 179 mm.
+  # https://psref.lenovo.com/syspool/Sys/PDF/ThinkStation/ThinkStation_P340_Tiny/ThinkStation_P340_Tiny_Spec.pdf
+  #
+  # The P340 is also a Tower and an SFF, and ITRefurbs' title says only
+  # "Workstation". The dimensions in its description (7" x 7.2" x 1.4") are
+  # the ones above, which is what identifies it -- a physical detail a vendor
+  # document can refute, per the convention at the bottom of this file.
+
 # ── Verification status ──────────────────────────────────────────────────────
 # Drafted 2026-09-21, reviewed against vendor documentation 2026-09-22. Nothing
 # here has been confirmed against a physical machine.
@@ -352,6 +369,7 @@ lenovo-m70s-sff:
 #                              listing's video ports against the 3060 Micro
 #   hp-elitedesk-800-g4-mini   HP maintenance guide (m2_nvme_slots read off a
 #                              board photo on p.24, so it is the soft field)
+#   lenovo-p340-tiny           Lenovo PSREF (added 2026-09-27)
 #   dell-optiplex-3080-micro   Dell manual. Was the file's one inferred entry,
 #                              keyed -ultra; the listings turned out to be
 #                              Micros, so the manual now describes the chassis

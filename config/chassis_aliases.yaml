@@ -1,6 +1,6 @@
 # How a listing title maps onto a chassis.yaml key (plan.md §5).
 #
-# This file describes ONE RETAILER'S NAMING. chassis.yaml describes hardware and
+# This file describes RETAILERS' NAMING. chassis.yaml describes hardware and
 # cites a vendor document per entry; keeping them separate is deliberate, so an
 # eTek quirk never ends up inside a Dell fact.
 #
@@ -62,6 +62,7 @@ lenovo:
   "m70q": lenovo-m70q-tiny
   "m80q": lenovo-m80q-tiny
   "m70s": lenovo-m70s-sff
+  "p340": lenovo-p340-tiny   # ThinkStation; also a Tower and SFF -- see below
 
 # Model numbers are quoted so YAML reads them as strings — unquoted, 3080 is an
 # integer and 600g3 is not, which would make the lookup type-dependent.
@@ -82,12 +83,20 @@ lenovo:
 # outcome this table's whole design prefers to a confident guess. The "5050"
 # entry above was removed for exactly this reason.
 #
-# Two aliases already here carry the hazard unresolved, because both models ship
-# in a second form factor that is not currently in tracked inventory:
+# Three aliases here carry the hazard unresolved, because each model ships in a
+# second form factor that is not currently in tracked inventory:
 #   600g3  -> ...-sff   (4 sockets). A 600 G3 Mini would price ~$350 wrong.
 #   800g4  -> ...-mini  (2 sockets). An 800 G4 SFF would price ~$350 wrong.
-# Both are correct for what is being polled today. If either form factor appears
-# in a new source, the fix is to split the alias -- not to pick the likelier one.
+#   p340   -> ...-tiny  (2 sockets). A P340 Tower or SFF would price wrong.
+# All are correct for what is being polled today. If another form factor
+# appears, the fix is to split the alias -- not to pick the likelier one.
+#
+# 800g4 was re-checked when ITRefurbs was added (2026-09-27), because one of its
+# two 800 G4 listings is titled plain "Desktop" with no form-factor word. Its
+# description gives 6.97 x 6.89 x 1.34 in, which is the Desktop Mini; the SFF
+# is several times that volume. So the alias held. The next "800 G4 Desktop"
+# from a new source needs the same check, not the same assumption. The P340
+# was identified the same way (chassis.yaml).
 #
 # Lenovo needs none of this: the suffix IS the form factor (q = Tiny, s = SFF),
 # so m70q and m70s are distinct keys with no ambiguity to resolve.

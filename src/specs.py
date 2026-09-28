@@ -38,8 +38,14 @@ RAM_LABELLED_RE = re.compile(
 STORAGE_WORD_RE = re.compile(r"\s*(?:GB\s*)?(?:SSD|NVME|HDD|M\.?2|PCIE|SATA)\b",
                              re.I)
 
-# "256 SSD", "256GB SSD", "512GB NVMe". The unit is optional, the medium is not.
-STORAGE_RE = re.compile(r"\b(\d{3,4})\s*(?:GB\s*)?(SSD|NVME|HDD)\b", re.I)
+# "256 SSD", "256GB SSD", "512GB NVMe", "2 TB HDD". The unit is optional for GB,
+# the medium is not. TB needs its unit: a bare "2 SSD" is not a disk size.
+STORAGE_RE = re.compile(
+    r"\b(?:(\d{3,4})\s*(?:GB\s*)?|(\d)\s*TB\s*)(SSD|NVME|HDD)\b", re.I)
+
+# The parse note that marks an interface read from the description. report.py
+# prints it beside the listing, since the ranking then rests on vendor prose.
+NVME_FROM_DESCRIPTION = "nvme read from description, not title"
 
 RAM_TYPE_RE = re.compile(r"\bDDR([345])\b", re.I)
 
@@ -52,13 +58,13 @@ BRANDS = {
 }
 
 # Model numbers: a bare 4-digit number, or an HP-style number plus generation
-# ("600 G3"), or a Lenovo-style letter-number ("M73").
+# ("600 G3"), or a Lenovo-style letter-number ("M73", ThinkStation "P340").
 # Lenovo's trailing letter is the form factor (q = Tiny, s = SFF), so it belongs
 # to the model number rather than being noise after it: m70q and m70s are
 # different chassis with different socket counts, and conflating them prices a
 # RAM upgrade ~$350 wrong. eTek stocked only an M73, which is why this pattern
 # originally stopped at the digits.
-MODEL_RE = re.compile(r"\b(m\d{2,3}[a-z]?)\b|\b(\d{3,4})\s*(g\d)?\b", re.I)
+MODEL_RE = re.compile(r"\b([mp]\d{2,3}[a-z]?)\b|\b(\d{3,4})\s*(g\d)?\b", re.I)
 
 
 def strip_html(body_html):
@@ -144,7 +150,35 @@ def parse_storage(text):
     match = STORAGE_RE.search(text)
     if not match:
         return None, None
-    return int(match.group(1)), match.group(2).lower()
+    gigabytes, terabytes, medium = match.groups()
+    # Decimal, as drives are sold: a "2 TB" disk is 2000 GB, not 2048.
+    size = int(gigabytes) if gigabytes else int(terabytes) * 1000
+    return size, medium.lower()
+
+
+def listing_storage(title, body_text=""):
+    """(size_gb, storage_type, [notes]) for a listing, title first.
+
+    The description is consulted twice, each time narrowly. If the title states
+    no drive, the description's first one is taken, as parse_ram_gb does. If the
+    title says only "SSD", the description may name the interface -- but only a
+    statement at the SAME capacity counts. ITRefurbs' titles say "256 GB SSD"
+    while their Key Features say "256GB NVMe SSD", which is about this drive;
+    "supports up to 2TB NVMe" is about the product line, and a capacity match is
+    what tells the two apart.
+    """
+    size, medium = parse_storage(title)
+    if size is None:
+        size, medium = parse_storage(body_text)
+        if size is None:
+            return None, None, ["no storage found in title"]
+        return size, medium, ["storage read from description, not title"]
+
+    if medium == "ssd" and any(
+            parse_storage(m.group(0)) == (size, "nvme")
+            for m in STORAGE_RE.finditer(body_text)):
+        return size, "nvme", [NVME_FROM_DESCRIPTION]
+    return size, medium, []
 
 
 def _brand(text):
@@ -219,9 +253,8 @@ def parse(title, body_html, chassis, cpus, aliases):
     if ram_note:
         notes.append(ram_note)
 
-    storage_gb, storage_type = parse_storage(title)
-    if storage_gb is None:
-        notes.append("no storage found in title")
+    storage_gb, storage_type, storage_notes = listing_storage(title, body_text)
+    notes.extend(storage_notes)
 
     ram_type_match = RAM_TYPE_RE.search(combined)
     brand = _brand(title)

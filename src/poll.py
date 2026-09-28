@@ -1,7 +1,7 @@
 """Fetch a source, persist it, parse it, store it (plan.md §1, §9).
 
-Phase 1 is one source on parsing tier 0 — a Shopify store's own product JSON —
-so there is no ChangeDetection container and no selectors. Run it from a cron
+Every source is on parsing tier 0 — a Shopify store's own product JSON — so
+there is no ChangeDetection container and no selectors. Run it from a cron
 entry; run it by hand as often as you like.
 
     python src/poll.py
@@ -172,10 +172,21 @@ def main():
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0)
     conn = db.connect(ROOT / "data" / "tracker.db")
 
+    failed = []
     for source in config["sources"]:
         if "products_json" not in source:
-            continue  # tier 0 only in Phase 1; HTML sources arrive with CD (§9)
-        total, parsed_ok, raw_path = poll_source(conn, source, config, fetched_at)
+            continue  # tier 0 only; no HTML source exists yet to need CD (§1)
+        # One source failing must not cost the others their observation: it
+        # cannot be backfilled (§1). Each is committed as it completes, and the
+        # run exits non-zero at the end so the failure is still visible.
+        try:
+            total, parsed_ok, raw_path = poll_source(conn, source, config,
+                                                     fetched_at)
+        except (SystemExit, requests.RequestException, ValueError) as error:
+            conn.rollback()
+            failed.append(source["id"])
+            print(f"{source['id']}: FAILED -- {error}", file=sys.stderr)
+            continue
         print(f"{source['id']}: fetched {total}, parse_ok {parsed_ok}/{total}, "
               f"raw -> {raw_path.relative_to(ROOT)}")
 
@@ -188,6 +199,8 @@ def main():
 
     conn.commit()
     conn.close()
+    if failed:
+        return f"poll failed for: {', '.join(failed)}"
 
 
 if __name__ == "__main__":
