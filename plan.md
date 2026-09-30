@@ -252,6 +252,8 @@ effective_price = listing_price
                 + requirement_penalties         -- unmet requirements, above
                 + fulfillment_adjustment        -- marketplace seller risk, §3
                 + source_adjustment            -- vendor recourse risk, §3
+                + shipping                      -- as listed, see below
+                + import_adjustment             -- cross-border cost, see below
 ```
 
 `cost_to_reach` and `requirement_penalties` are mutually exclusive per
@@ -317,6 +319,49 @@ Upgrade part costs live in `config/parts.yaml`, refreshed by hand. They were
 expected to move slowly; during the 2026 DRAM shortage they are the fastest-moving
 input in the project, and a figure more than a month old is likely low. The file
 carries its own read-this-first note and the date it was priced.
+
+### Shipping, imports and currency
+
+The formula had no shipping term until eBay, because neither refurbisher's
+tier-0 JSON carries one: eTek and ITRefurbs are charged `0`. That flatters them
+by whatever they charge at checkout, which is unmeasured. It was tolerable while
+every source shipped domestically. It is not on eBay, where the 2026-09-30
+capture of one search (`OptiPlex 3080 Micro`, Buy It Now) ran from free to
+$1,131, and 66 of 110 listings shipped from the US, Australia or the UK.
+`shipping` is the listed amount; a listing that shows only an *estimate* carries
+a mark in the digest, as `NVMe per the description` does.
+
+`import_adjustment` is a flat dollar figure per ships-from country, not a
+computed duty:
+
+```yaml
+# config/rules.yaml
+import_adjustment:            # dollars, by ships-from country
+  CA: 0
+  US: TBD                     # placeholder -- set by hand before eBay ranks
+  default: TBD                # every other origin
+```
+
+A computed rate was the alternative and it prices the wrong thing. Computers
+(HS 8471) enter Canada duty-free as far as this plan has checked, so the real
+cross-border cost is courier brokerage and a return that has to cross the border
+back. That is a judgement, the same species as `source_adjustment` (see "What
+the adjustments are, exactly" above), and a hand-set number is also where any
+change in Canada–US tariff policy lands. Sales tax is deliberately excluded:
+the domestic sources' prices exclude it too, so charging it to imports alone
+would penalise them for something every purchase pays.
+
+A listing from an origin whose value is still `TBD` is **held out of the
+ranking and surfaced**, not ranked at `0`, for the same reason an unknown
+chassis is (§5, §8): a missing input that defaults to the flattering value ranks
+a machine better than it is.
+
+**Currency is recorded, never converted.** The ranking adds prices across
+sources, so an unconverted US$300 would sit beside C$300 as an equal — an error
+of roughly $100, larger than the `storage_nvme` penalty. Every price in the
+eBay.ca capture was already in C$, including the listings shipping from abroad,
+so conversion is expected never to be needed. If a non-CAD price does arrive,
+the listing is held out and surfaced rather than ranked.
 
 ### Then flag: is this cheap for what it is?
 
@@ -805,10 +850,22 @@ fulfillment_adjustment:         # dollars added to effective_price (§2)
   walmart_fulfilled:  0
   seller_fulfilled:  50         # risk premium for a harder return
   no_return_window: excluded    # a gate, not a price
+
+blocked_sellers:                # marketplace seller IDs, excluded by name
+  refurbio: REFURB.io, excluded as a source above
 ```
 
 Gates handle the bad-seller problem, which is genuinely binary. The adjustment
 handles residual risk among sellers who clear the gates. No weights anywhere.
+
+`blocked_sellers` exists because a vendor excluded above can also sell on a
+marketplace, and the numeric gates will not catch it. The 2026-09-30 eBay
+capture (§2) had REFURB.io listing two 3080 Micros as `refurbio`, at 99%
+positive from 3.6K reviews with an eBay Refurbished badge — clear of every
+threshold. The §3 exclusions are about the business, not the channel, so they
+follow the vendor onto eBay by name. Each entry carries its reason, as
+`out_of_scope.yaml` entries do, and a blocked listing is counted in the digest
+like a keyword exclusion (§6) rather than dropped silently.
 
 The `50` is a statement about **me**, not about the market: it is what a painful
 third-party return is worth avoiding. A $379 seller-fulfilled listing lands at
@@ -853,6 +910,7 @@ seller               -- null for direct retailers/refurbishers
 fulfillment          -- amazon_fulfilled | seller_fulfilled | ... | null
 seller_rating        -- null until marketplaces land (Phase 4)
 seller_reviews
+ships_from           -- country code; null for domestic-only sources (§2)
 first_seen, last_seen
 parse_ok             -- false if the parser failed on this one
 
@@ -863,12 +921,17 @@ listing_id
 observed_at
 price
 compare_at_price     -- vendor "was" price; nullable, weak signal (§2)
+price_max            -- top of a multi-configuration listing's range (§6); else null
+currency             -- as listed; non-CAD is held out, never converted (§2)
+shipping             -- as listed; null where the source does not state it (§2)
 in_stock
 ```
 
 `compare_at_price` sits on `observations` rather than `listings` because vendors
 change it — it is a property of the offer at a moment, like the price itself. It
 is null for any source that does not publish one, which is most of them.
+`shipping`, `currency` and `price_max` sit there for the same reason: an eBay
+seller can change any of them without the listing changing.
 
 `observations` is where price history lives, and comparing two dates is a query
 rather than a feature:
@@ -1218,6 +1281,50 @@ Instant alerts can be added later if a genuinely time-sensitive deal is ever
 missed.
 
 The selector-health warning at the bottom is not decoration. See §8.
+
+### eBay additions: multi-configuration listings and keyword exclusions
+
+Two blocks the refurbishers never needed, both decided against the 2026-09-30
+eBay capture described in §2's shipping note.
+
+**Multi-configuration listings get their own section, unranked.** An eBay
+listing can offer several configurations at one URL — `C $149.99 to C $439.99`,
+"i7/i5, up to 32GB" — which is not one machine and cannot be scored as one. They
+print in a section beside the ranking, each as its price range and link:
+
+```text
+  -- multi-configuration (not ranked) --
+  $149.99-$439.99  Dell OptiPlex Tiny Micro i7/i5 up to 32GB   ebay:<seller>
+                   <url>
+```
+
+The two alternatives both lost. Skipping them hides live inventory for no
+stated reason, the failure §9's "every listing appears" rule exists to prevent.
+Expanding each variant into its own row may be possible from the API, but that
+is unverified, and the section works whatever the API turns out to expose, so
+it is the cheaper thing to replace later.
+
+Two limits keep it small. Only listings whose chassis reaches 64 GB appear, since
+a capped chassis cannot qualify at any variant and the title names the chassis
+even when it does not name the configuration — about 5 of 69 results were ranges
+in one search, and that count scales with every chassis searched. And they are
+left out of the what-moved comparison, as out-of-scope listings are: a range
+moves whenever one variant sells out, and mail about that is noise.
+
+**Keyword exclusions are counted, not dropped.** eBay results mix in parts —
+drive caddies, bezels, motherboards, barebones units. A title containing a
+listed word is excluded, and so is eBay's "For parts or not working" condition,
+which is a structured field. False positives are accepted, so the digest makes
+them findable:
+
+```text
+  eBay: 14 excluded by keyword (caddy 5, bezel 4, motherboard 3, barebone 2)
+```
+
+A word hiding thirty listings a day stands out in that line. The rule for the
+list: **a word must name a part, never a machine type or an accessory.** `mount`
+fails it — "VESA mount included" is common in genuine mini-PC titles — and so
+would `workstation`, for the reason §9 Phase 3 gives. The list lives in config.
 
 ---
 
@@ -1766,6 +1873,41 @@ In rough order of value-per-unit-effort:
 4. **Amazon.ca** — via platform-native alerting (watchlist / camelcamelcamel)
    feeding `watch_urls.yaml`, *not* by scraping search pages.
 
+**eBay is being built next, ahead of Phase 3b (decided 2026-09-30).** Phase 3
+added only near-misses, and eBay is the one source likely to change the answer.
+Only eBay moves: the rest of this phase keeps its place, because Best Buy
+Marketplace depends on Phase 3b's Best Buy direct. The phase numbers group
+sources by kind, so they stay.
+
+Decided against a manual capture of one eBay.ca search (2026-09-30) before any
+API access, and argued in the sections that use them:
+
+- **Shipping and import costs** enter the effective price, and currency is
+  recorded but never converted (§2).
+- **Multi-configuration listings** get an unranked section of their own (§6).
+- **A keyword exclusion list** takes parts out of eBay results, with a count
+  in the digest (§6). This is not a reversal of Phase 3's per-URL list, which
+  stays for the refurbishers. That list is a chore per listing, fine for a
+  ten-product collection and unworkable at eBay's volume and daily turnover. The
+  case that sank a keyword rule there, P340 "Workstation", was a word naming a
+  *machine type*, which §6's rule for the list excludes.
+
+Two findings from the same capture that the build has to absorb:
+
+- **The search page is evidence, not a feed.** It shows which fields exist, but
+  fetching it on a schedule is the marketplace search scraping §3 rejected. The
+  feed is the Browse API, and the developer key is the blocker.
+- **Titles alone parse 21 of 109.** The largest failure is a CPU missing from
+  `cpus.yaml` (config), and the next is titles like "i5 10th Gen" that name no
+  CPU at all, which no title parser can fix. The API's per-item spec fields
+  are expected to close that gap; the search page does not show them.
+
+**The reference price is unconfirmed.** The Browse API returns active listings.
+Sold prices appear to need the Marketplace Insights API, which is limited-release
+and needs eBay's approval. Check that before building `reference_prices`; if
+access is refused, the street-price baseline needs a different source or does
+not happen.
+
 If only one item in this phase ever gets built, build eBay. If the schedule
 slips, eBay is the one worth pulling *forward* — ahead of Phase 3b's direct
 retailers, whose inventory is well-priced but rarely cheap.
@@ -1859,3 +2001,7 @@ stays a record of one revision rather than a running log.
 | -- | `chart.py`, on demand (§6) | "Is this price unusual for this machine" is a question asked while deciding, not every morning. Self-contained HTML with the data inlined: no CDN, no matplotlib, nothing to break later |
 | Dependencies listed in the README only | `requirements.txt` | CI needs a declared install, which is the consumer the file was previously waiting for |
 | ITRefurbs needs ChangeDetection and selectors (§1, §9 Phase 3) | Also tier-0 Shopify JSON; CD unscheduled | Checked rather than assumed, 2026-09-25: `itrefurbs.ca/collections/refurbished-desktops/products.json` returns the same shape as eTek's. The premise came from the vendor being described as an HTML storefront in v1's source survey and was never verified. No source tracked or reviewed so far needs a selector, so CD is now a capability waiting for a source rather than a phase deliverable. Phase 3's real cost moves from selectors to parsing: the collection is mixed (5 of 11 are small-form desktops), so "wrong kind of machine" needs distinguishing from "could not parse" |
+| Phase 3b before Phase 4 (§9) | eBay pulled ahead of Phase 3b; the rest of Phase 4 stays | Phase 3 added only near-misses, and eBay is the source likely to change the answer. The phase numbers group sources by kind and are unchanged; Best Buy Marketplace still depends on Phase 3b |
+| No shipping term in the effective price (§2) | `shipping` and `import_adjustment` added; currency recorded, never converted | The refurbishers' JSON carries no shipping, so it was invisible. On eBay it ran from free to $1,131 across one search, 66 of 110 listings shipped from abroad, and a cheap US listing ranked without it is not cheap. Import cost is a hand-set figure per origin rather than a duty rate, because computers enter duty-free and the real cost is brokerage and returns |
+| Per-URL out-of-scope list for every source (§9 Phase 3) | Plus a keyword exclusion list for eBay, counted in the digest (§6) | A per-URL chore works for ten products and not for eBay's volume. Restricted to words naming parts, which avoids the machine-type word that sank a keyword rule in Phase 3 |
+| -- | Multi-configuration listings in an unranked section (§6) | A price range across configurations is not one machine. Skipping them hides inventory; expanding variants depends on unverified API data |
