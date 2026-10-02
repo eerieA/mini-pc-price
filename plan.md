@@ -319,7 +319,7 @@ computed duty:
 # config/rules.yaml
 import_adjustment:            # dollars, by ships-from country
   CA: 0
-  US: TBD                     # placeholder -- set by hand before eBay ranks
+  US: 50
   default: TBD                # every other origin
 ```
 
@@ -331,6 +331,11 @@ the adjustments are, exactly" above), and a hand-set number is also where any
 change in Canada–US tariff policy lands. Sales tax is deliberately excluded:
 the domestic sources' prices exclude it too, so charging it to imports alone
 would penalise them for something every purchase pays.
+
+`US: 50` is about $10 of Canada Post handling, ~$30 of eBay's ~3% charge for
+converting a USD price, and ~$10 for the chance of a return crossing the border;
+the breakdown and its evidence are in `rules.yaml`. Every other origin stays
+`TBD`.
 
 A listing from an origin whose value is still `TBD` is **held out of the
 ranking and surfaced**, not ranked at `0`, for the same reason an unknown
@@ -1966,3 +1971,4 @@ stays a record of one revision rather than a running log.
 | -- | Marketplace parse failures tallied by reason (§6) | Two warning lines per listing is a hundred lines a day at eBay's volume. The tally keeps every reason visible and names the config entries that would pay off |
 | Storage needed a medium word: SSD, NVMe or HDD (§5) | Also "M.2" (read as `ssd`), French units, and a bare capacity of 120 GB or more (type null) | eBay sellers write "512GB M.2" and "16GB 512GB"; 104 of 441 listings failed on storage. Neither states an interface, so both pay the nvme penalty rather than being upgraded. The 120 GB threshold also stops a lone drive figure being read as RAM |
 | One chassis per Lenovo model number (§5) | The generation is part of the model; a title naming none is held out. `ram_type` per chassis prices the upgrade (§2) | M70q Gen 5, M80q Gen 3 and M70s Gen 5 take DDR5 under the same model number (PSREF), and eBay lists them: Gen 5 M70qs were priced with DDR4 modules, $470 low. Untitled ones are held out rather than assumed Gen 1; the cost is one qualifier (§5) |
+| `import_adjustment` US: TBD (§2) | US: 50; other origins still TBD | Duty is 0 and sales tax cancels, so it prices handling, eBay's USD conversion and a cross-border return (`rules.yaml`). It does not change the cheapest qualifier: the cheapest US one was $984.43 before the term, against eTek's $914.99 |

@@ -26,13 +26,30 @@ surface_near_misses: true     # digest section for single-requirement failures
 
 import_adjustment:            # dollars added to effective_price, by ships-from
   CA: 0                       # country (plan.md §2). Not a duty rate: computers
-  US: TBD                     # enter duty-free, so this prices brokerage and a
+  US: 50                      # enter duty-free, so this prices brokerage and a
   default: TBD                # return that has to cross the border back.
   # TBD is deliberate, not a placeholder to fill with 0. A listing from an
   # origin still at TBD is HELD OUT of the ranking and counted in the digest,
   # as an unknown chassis is: a missing input that defaults to the flattering
   # value ranks a machine better than it is (§5, §8). Set these by hand once the
   # held-out counts show how much inventory waits on them.
+  #
+  # US: 50, set 2026-10-02 from three parts. Duty and sales tax are not among
+  # them, for the reasons in plan.md §2.
+  #   ~10  handling. The cheapest shipping options on US listings are USPS
+  #        International, which Canada Post finishes and charges $9.95 for when
+  #        tax is owed, and eBay International Shipping, which collects import
+  #        charges at checkout with no fee at the door. UPS/FedEx ground
+  #        brokerage ($62-93) applies only to UPS ground, never the cheapest.
+  #   ~30  currency. 170 of 212 US listings are priced in USD; eBay shows CAD at
+  #        the base rate and its ~3% conversion charge comes on top. An upper
+  #        bound, and it over-charges the US listings already priced in CAD.
+  #   ~10  a return crossing the border: ~$80-100 shipping back plus import tax
+  #        reportedly not refunded, weighted by the chance of returning it.
+  # eBay's API carries no per-listing import charge to read instead: none of 15
+  # full-item responses had importCharges.
+  # default stays TBD: the other origins are mostly Australia, with no CUSMA and
+  # a far dearer return, and are not worth pricing while US stock is plentiful.
 
 # ── Why 325, and a distortion to keep in view ────────────────────────────────
 # ram_max_gb's penalty was 120 in the first draft, chosen when 2 x 32 GB of DDR4
