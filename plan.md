@@ -251,9 +251,10 @@ requirement: if the chassis can reach 64 GB, the listing pays the *real* cost of
 the SODIMMs; if it cannot, it pays `else_penalty` instead. A machine is never
 charged both for an upgrade and for failing to be upgradeable.
 
-RAM is upgradeable, but no longer cheap: at ~$325 per 32 GB module, a 16 GB
-machine at $300 lands at $625 and loses to a 32 GB one at $400. Scoring the
-post-upgrade cost is what decides that, whichever way it goes.
+RAM is upgradeable, but no longer cheap: at ~$325 per 32 GB DDR4 module (a
+DDR5 chassis pays ~$560, `parts.yaml`), a 16 GB machine at $300 lands at $625
+and loses to a 32 GB one at $400. Scoring the post-upgrade cost is what decides
+that, whichever way it goes.
 
 ### Shipped RAM is worth more than upgradeable RAM
 
@@ -1076,6 +1077,8 @@ requirement and the `cost_to_reach(NVMe)` term in the same way. It counts M.2
 sockets that will actually take an NVMe drive, which is not the same as counting
 M.2 connectors: a B-key socket may be SATA-only, and the 2230 Wi-Fi socket never
 counts. Both distinctions cost real entries during the first population.
+`ram_type` (DDR3/4/5) picks which `parts.yaml` module prices the RAM upgrade;
+it is a chassis fact because one model number can span two (below).
 
 The values above are the verified ones. 64 GB is not the norm from 8th gen
 onward: of the nine chassis in eTek's inventory, **two** reach 64 GB officially — the 600 G3 SFF on four full-size DIMM sockets, and the 3080
@@ -1161,6 +1164,15 @@ before, and every eTek and ITRefurbs title is consistent with its alias. `Mini`
 is in no list, because "Mini PC" is generic marketing on SFF listings too. eBay's
 own Form Factor field is no better than the refurbishers' prose: one 3080 Micro
 listing gave it as "Micro Tower".
+
+**A Lenovo generation is part of the model number.** The M70q is DDR4 through
+Gen 4 and DDR5 from Gen 5, with storage changing too (PSREF), and the M80q and
+M70s split the same way. So "M70q Gen 5", "M70q G5" and "M70q Tiny Gen 5" read
+as `m70q gen5`, as HP's "600 G3" already reads as `600g3`, and the alias table
+maps generations to chassis. A title that names no generation is held out, even
+though Lenovo's own name for Gen 1 is plain "M70q": guessing Gen 1 prices a
+Gen 5 with the wrong memory, and enough titles state the generation that the
+held-out ones are not missed.
 
 ### CPU table
 
@@ -1953,3 +1965,4 @@ stays a record of one revision rather than a running log.
 | -- | No eBay username stored anywhere (§3) | The production keyset is enabled under eBay's "I do not persist eBay data" exemption; the alternative was a public deletion-notification endpoint, which is a service (§1). Block list applied at poll time, raw responses scrubbed |
 | -- | Marketplace parse failures tallied by reason (§6) | Two warning lines per listing is a hundred lines a day at eBay's volume. The tally keeps every reason visible and names the config entries that would pay off |
 | Storage needed a medium word: SSD, NVMe or HDD (§5) | Also "M.2" (read as `ssd`), French units, and a bare capacity of 120 GB or more (type null) | eBay sellers write "512GB M.2" and "16GB 512GB"; 104 of 441 listings failed on storage. Neither states an interface, so both pay the nvme penalty rather than being upgraded. The 120 GB threshold also stops a lone drive figure being read as RAM |
+| One chassis per Lenovo model number (§5) | The generation is part of the model; a title naming none is held out. `ram_type` per chassis prices the upgrade (§2) | M70q Gen 5, M80q Gen 3 and M70s Gen 5 take DDR5 under the same model number (PSREF), and eBay lists them: Gen 5 M70qs were priced with DDR4 modules, $470 low. Untitled ones are held out rather than assumed Gen 1; the cost is one qualifier (§5) |

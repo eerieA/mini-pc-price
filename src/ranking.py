@@ -37,20 +37,25 @@ def load_config():
     }
 
 
-def ram_upgrade_cost(listing, parts):
+def ram_upgrade_cost(listing, ram_type, parts):
     """What it costs to get this machine to 64 GB, or None if it cannot get there.
 
     Two different parts, and pricing one with the other's number is wrong in an
     unknown direction (parts.yaml): a 2-slot Tiny/Micro takes SODIMMs, while a
-    4-socket SFF takes full-size UDIMMs sold as kits.
+    4-socket SFF takes full-size UDIMMs sold as kits. `ram_type` picks the
+    generation; a type parts.yaml has no price for raises rather than borrowing
+    another's.
     """
+    memory = ram_type.lower()
     shipped = listing["ram_gb"] or 0
     if listing["ram_slots"] == 4:
         # 4 x 16 GB = two 2x16GB kits. The SFF reaches 64 GB across four sockets,
         # so the SODIMM figure does not apply.
-        return 2 * parts["ram"]["ddr4_udimm_32gb_kit"], "RAM (2 UDIMM kits)"
+        return (2 * parts["ram"][f"{memory}_udimm_32gb_kit"],
+                f"RAM (2 {ram_type} UDIMM kits)")
     modules = max(0, -(-(64 - shipped) // 32))  # 32 GB SODIMMs, rounded up
-    return modules * parts["ram"]["ddr4_sodimm_32gb"], f"RAM ({modules}x SODIMM)"
+    return (modules * parts["ram"][f"{memory}_sodimm_32gb"],
+            f"RAM ({modules}x {ram_type} SODIMM)")
 
 
 def score(listing, config):
@@ -70,7 +75,10 @@ def score(listing, config):
 
     ceiling = listing["ram_max_gb"]
     if ceiling is not None and ceiling >= requirements["ram_max_gb"]["min"]:
-        cost, label = ram_upgrade_cost(listing, parts)
+        # Read from config, not the listings row: a delisted row is never
+        # re-parsed, so a value copied into it at poll time would go stale.
+        ram_type = config["chassis"][listing["chassis_key"]]["ram_type"]
+        cost, label = ram_upgrade_cost(listing, ram_type, parts)
         if cost:
             price += cost
             terms.append(f"+ {cost} {label}")

@@ -21,9 +21,9 @@
 #      but earmarked for contract customers, not retail.
 #      https://www.microchipusa.com/industry-news/samsung-and-sk-hynix-extend-ddr4-lifecycles
 #
-# Every chassis in chassis.yaml is DDR4. So this project is buying into a part
-# with no new supply coming, ever — the price has no reason to fall back the way
-# a demand spike would. Re-check these before any purchase decision; a number
+# Nearly every chassis in chassis.yaml is DDR4. So this project is buying into
+# a part with no new supply coming, ever — the price has no reason to fall back
+# the way a demand spike would. Re-check these before any purchase decision; a number
 # more than a month old is probably low, and low in the direction that makes
 # under-specified machines look better than they are.
 
@@ -47,6 +47,20 @@ ram:
   # cost_to_reach(64GB) by roughly $640 and wrongly sink every 16/32 GB machine.
   ddr4_sodimm_32gb: 325   # KLEVV 32GB (1x32GB) DDR4-3200 CL22, in stock
   ddr4_sodimm_16gb: 185   # see the note below on this figure
+
+  # For the DDR5 chassis (Lenovo M70q Gen 5/6, M80q Gen 3/4). NOT read off a
+  # retailer page: Canada Computers, Newegg.ca and Memory Express all refuse
+  # automated fetches, so this is a search engine's summary of their listings,
+  # 2026-10-02, with stock unknown:
+  #   PNY 32GB DDR5 SODIMM               $559.99  Newegg.ca  <- used
+  #   Crucial CT32G56C46S5 32GB          $629.99  Newegg.ca
+  #   TEAMGROUP Elite 32GB DDR5-5600     $679.99  Memory Express
+  #   G.SKILL Ripjaws 32GB DDR5-5600     $749.99  Memory Express
+  #   Kingston FURY Impact 32GB 5600     $889.99  Memory Express
+  # Replace it with a price read from a page before relying on a DDR5 ranking.
+  # Even as a floor it says DDR5 costs well over DDR4's $325, despite DDR4
+  # being the end-of-life part.
+  ddr5_sodimm_32gb: 560
 
   # Full-size UDIMM, for the SFF chassis (4 sockets). Priced as 2 x 32GB kits,
   # since a 4-socket board reaching 64 GB takes two 2x16GB kits and the kits are

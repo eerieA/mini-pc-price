@@ -236,23 +236,52 @@ def test_all_ten_real_listings_parse(chassis, cpus, aliases):
 # had to carry the letter. Lenovo's suffix is the form factor -- q is Tiny, s is
 # SFF -- so dropping it does not just lose precision, it loses the one segment
 # that distinguishes a 2-slot SODIMM machine from a 4-socket UDIMM one.
-@pytest.mark.parametrize("title, model, expected_key", [
-    ("Lenovo ThinkCentre M70s SFF Desktop PC | Intel Core i5-10400 2.9GHz",
-     "m70s", "lenovo-m70s-sff"),
-    ("Lenovo ThinkCentre M70q Gen 5 Tiny Desktop | Intel Core i5-14400T",
-     "m70q", "lenovo-m70q-tiny"),
-    ("Lenovo ThinkCentre M80q Gen 3 Tiny Desktop PC | Intel Core i5-12500",
-     "m80q", "lenovo-m80q-tiny"),
+@pytest.mark.parametrize("title, model", [
+    ("Lenovo ThinkCentre M70s SFF Desktop PC | Intel Core i5-10400 2.9GHz", "m70s"),
     # Upper case in the wild, and the one that must keep working.
-    ("Lenovo THINKCENTRE M70Q Tiny Workstation, Intel Core i7-10700T",
-     "m70q", "lenovo-m70q-tiny"),
+    ("Lenovo THINKCENTRE M70Q Tiny Workstation, Intel Core i7-10700T", "m70q"),
+    ("Lenovo M73 Tiny Desktop i5-4570T 8GB", "m73"),
+])
+def test_lenovo_model_suffix_is_kept(title, model):
+    assert specs._model_number(title) == model
+
+
+# ── Lenovo generations (eBay, 2026-10-02) ────────────────────────────────────
+# The M70q, M80q and M70s each span DDR4 and DDR5 generations under one model
+# number, so the generation is part of the model. A title that states none is
+# held out rather than assumed to be Gen 1 (chassis_aliases.yaml).
+@pytest.mark.parametrize("title, model, expected_key", [
+    ("Lenovo ThinkCentre M70q Gen 5 Tiny PC - Intel i5-14400T, 16GB DDR5, 256GB SSD",
+     "m70q gen5", "lenovo-m70q-gen5-tiny"),
+    ("Lenovo ThinkCentre M70q Gen5 i5-14400T  (14th Gen) 16GB RAM 256GB SSD Win 11 Pro",
+     "m70q gen5", "lenovo-m70q-gen5-tiny"),
+    ("LENOVO ThinkCentre M70Q G6 Tiny Desktop PC Intel U7-265T 32GB DDR5 1TB SSD",
+     "m70q gen6", "lenovo-m70q-gen5-tiny"),
+    # The form-factor word sits between the model and the generation.
+    ("Lenovo ThinkCentre M70q Tiny Gen 4 PC i7-13700T CPU 16GB RAM 512GB Win 11 WiFi",
+     "m70q gen4", "lenovo-m70q-tiny"),
+    ("Lenovo ThinkCentre M70q Gen 1 Core i5-10400T 2.00 GHz 16 GB DDR4 256 GB NVMe",
+     "m70q gen1", "lenovo-m70q-tiny"),
+    ("Lenovo ThinkCentre M80q G1 Tiny Desktop i5-10500T 16GB 512GB M.2 Windows 11 Pro",
+     "m80q gen1", "lenovo-m80q-tiny"),
+    ("Lenovo ThinkCentre M80q G3 Tiny i5-12500T 16GB 256GB SSD W11P (USED, GRADE A)",
+     "m80q gen3", "lenovo-m80q-gen3-tiny"),
+    ("Lenovo ThinkCentre M70s G3 SFF i5-12400 Min 2.50 GHz 16GB 512GB SSD Win 11 Pro",
+     "m70s gen3", "lenovo-m70s-sff"),
+    # Held out: no generation stated, no PSREF sheet, or DDR5 UDIMM unpriced.
+    ("Lenovo ThinkCentre M70q Tiny PC i5-10500T 32GB 1TB SSD Win 11 Pro",
+     "m70q", None),
+    ("Lenovo ThinkCentre M80q G2 Tiny Desktop i5-10400T 16GB 512GB M.2 Windows 11 Pro",
+     "m80q gen2", None),
+    ("LENOVO ThinkCentre M70s G5 SFF Desktop PC i5-14400 16GB DDR5 512GB SSD Windows",
+     "m70s gen5", None),
+    # No generations, so the bare model still resolves.
     ("Lenovo M73 Tiny Desktop i5-4570T 8GB", "m73", "lenovo-m73-tiny"),
 ])
-def test_lenovo_model_suffix_is_kept(title, model, expected_key, chassis, cpus,
-                                     aliases):
+def test_lenovo_generation_picks_the_chassis(title, model, expected_key, chassis,
+                                             cpus, aliases):
     assert specs._model_number(title) == model
-    result = specs.parse(title, "", chassis, cpus, aliases)
-    assert result["chassis_key"] == expected_key
+    assert specs.parse(title, "", chassis, cpus, aliases)["chassis_key"] == expected_key
 
 
 # ── RAM must never be read from the storage figure ───────────────────────────
@@ -362,13 +391,14 @@ def test_parse_storage_reads_ebay_titles(title, expected):
 
 
 @pytest.mark.parametrize("title, ram_gb, storage_gb", [
-    ("Lenovo ThinkCentre M70q Tiny Desktop Core i5-10400T 2.0GHz 16GB 512GB Win 11 Pro",
+    ("Lenovo ThinkCentre M70q G3 Tiny Desktop WiFi i5-12400T 16GB 512GB Windows 11 Pro",
      16, 512),
-    ("Lenovo ThinkCentre M80q Tiny Core i5-10500T 2.3GHz 32GB 1TB Windows 10 Pro",
-     32, 1000),
+    ("HP EliteDesk 800 G5 mini desktop Core i5 9500T 2.2 GHz 8 GB 1 TB UHD Graphics 63",
+     8, 1000),
     ("Lenovo ThinkCentre M70q Gen 1 Core i5-10400T 2.00GHz 16GB DDR4 256GB",
      16, 256),
-    ("LENOVO ThinkCentre M80Q, Tiny Intel HD,i7-10700T, 16GB, 512GB", 16, 512),
+    ("Lenovo ThinkCentre M70q G2 Tiny Desktop i5-11400T WiFi 16GB, 512GB Win 11 Pro",
+     16, 512),
     ("Lenovo ThinkStation P340 Tiny | i7-10700T | 16GB | 512 GB | Win 11 Pro",
      16, 512),
 ])

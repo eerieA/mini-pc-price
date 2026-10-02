@@ -133,7 +133,8 @@ def build_report(listings, config, ranked=None):
         f"cores>={requirements['cpu_cores']['min']}"
         f"({requirements['cpu_cores']['else_penalty']}) "
         f"nvme({requirements['storage_nvme']['else_penalty']}) | "
-        f"parts: SODIMM32 ${parts['ram']['ddr4_sodimm_32gb']}"
+        f"SODIMM32 ${parts['ram']['ddr4_sodimm_32gb']}"
+        f" DDR5 ${parts['ram']['ddr5_sodimm_32gb']}"
     )
     out.append("=" * WIDTH)
 

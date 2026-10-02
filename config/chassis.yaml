@@ -18,6 +18,8 @@
 #                an M.2 slot" — see the 9020 Micro, whose M.2 is SATA-only, and
 #                note that Wi-Fi 2230 sockets are excluded everywhere.
 #   sata         has a 2.5" SATA bay
+#   ram_type     DDR3 / DDR4 / DDR5. Picks the parts.yaml price for the upgrade;
+#                one model number can span two (Lenovo M70q Gen 4 vs Gen 5).
 #
 # ── Only the official ceiling is recorded ────────────────────────────────────
 # Several 8th/9th-gen chassis are specified by the vendor at 32 GB (16 GB per
@@ -44,6 +46,7 @@
 lenovo-m73-tiny:
   ram_slots: 2
   ram_max_gb: 16          # DDR3, 2 x 204-pin SODIMM
+  ram_type: DDR3
   m2_nvme_slots: 0        # 2.5" SATA / DOM only — no M.2 at all
   sata: true
   # Lenovo PSREF, ThinkCentre M73 Tiny Platform Specifications (PDF):
@@ -53,6 +56,7 @@ lenovo-m73-tiny:
 dell-optiplex-9020-micro:
   ram_slots: 2
   ram_max_gb: 16          # DDR3L
+  ram_type: DDR3
   m2_nvme_slots: 0        # an M.2 exists but is SATA-only — no NVMe path
   sata: true
   # Dell OptiPlex 9020M specifications: storage is SATA throughout, with no
@@ -80,6 +84,7 @@ dell-optiplex-9020-micro:
 hp-prodesk-600-g3-sff:
   ram_slots: 4            # SFF, not a Mini — full-size DIMMs
   ram_max_gb: 64
+  ram_type: DDR4
   m2_nvme_slots: 1        # two M.2 connectors, one of which is 2230 Wi-Fi
   sata: true
   # HP Hardware Reference Guide, ProDesk 600 G3 SFF: up to 64 GB, four DIMM
@@ -101,6 +106,7 @@ hp-prodesk-600-g3-sff:
 dell-optiplex-5060-micro:
   ram_slots: 2
   ram_max_gb: 32
+  ram_type: DDR4
   m2_nvme_slots: 1
   sata: true
   # hardware-corner: up to 32 GB SODIMM DDR4-2400/2666 across two slots, Q370.
@@ -139,6 +145,7 @@ dell-optiplex-5060-micro:
 hp-prodesk-400-g5-mini:
   ram_slots: 2
   ram_max_gb: 32
+  ram_type: DDR4
   m2_nvme_slots: 1        # M.2 2280-S1-B-M, NVMe 1.1
   sata: true
   # HP ProDesk 400 G5 Desktop Mini spec sheet (read 2026-09-22): the largest
@@ -161,6 +168,7 @@ hp-prodesk-400-g5-mini:
 dell-optiplex-3070-micro:
   ram_slots: 2
   ram_max_gb: 32
+  ram_type: DDR4
   m2_nvme_slots: 1
   sata: true
   # Dell OptiPlex 3070 Micro Setup and Specifications, memory section:
@@ -171,6 +179,7 @@ dell-optiplex-3070-micro:
 dell-optiplex-7070-micro:
   ram_slots: 2
   ram_max_gb: 32          # Dell official: 16 GB per slot
+  ram_type: DDR4
   m2_nvme_slots: 1        # PCIe x4 NVMe; the second M.2 is 2230 Wi-Fi
   sata: true
   # Dell OptiPlex 7070 Micro Setup and Specifications, memory section:
@@ -192,6 +201,7 @@ dell-optiplex-7070-micro:
 hp-elitedesk-800-g4-mini:
   ram_slots: 2
   ram_max_gb: 32
+  ram_type: DDR4
   m2_nvme_slots: 2        # two M.2 sockets taking PCIe NVMe 3.0 x4 or SATA
   sata: true
   # hardware-corner: "RAM max: 32 GB" across two SODIMM DDR4-2666 slots; "two
@@ -204,6 +214,7 @@ hp-elitedesk-800-g4-mini:
 dell-optiplex-3080-micro:
   ram_slots: 2
   ram_max_gb: 64
+  ram_type: DDR4
   m2_nvme_slots: 1
   sata: true
   # Dell OptiPlex 3080 Micro: "Two SODIMM", DDR4, maximum 64 GB, 4/8/16/32 GB
@@ -245,6 +256,7 @@ dell-optiplex-3080-micro:
 dell-optiplex-3060-micro:
   ram_slots: 2
   ram_max_gb: 32          # DDR4-2666, 2 x 16 GB — NOT a 64 GB chassis
+  ram_type: DDR4
   m2_nvme_slots: 1
   sata: true
   # Dell's 3060 Micro specs page lists "32 GB - 2 x 16 GB" as the maximum. Worth
@@ -255,6 +267,7 @@ dell-optiplex-3060-micro:
 dell-optiplex-7010-micro:
   ram_slots: 2
   ram_max_gb: 64          # DDR4-3200, 2 x 32 GB, dual-channel
+  ram_type: DDR4
   m2_nvme_slots: 1        # M.2 2230 + 2280 supported; PCIe 4.0 x4
   sata: true
   # The 2023 re-use of the 7010 name (13th-gen Raptor Lake), not the 2012 model.
@@ -263,6 +276,7 @@ dell-optiplex-7010-micro:
 dell-optiplex-5050-sff:
   ram_slots: 4            # full-size UDIMM, not SODIMM — see parts.yaml
   ram_max_gb: 64          # DDR4-2133/2400, Dell's stated maximum
+  ram_type: DDR4
   m2_nvme_slots: 1        # PCIe 3.0 x4
   sata: true
   # Four sockets means reaching 64 GB costs two UDIMM kits, not one SODIMM (§2).
@@ -272,6 +286,7 @@ dell-optiplex-5050-sff:
 hp-elitedesk-800-g3-sff:
   ram_slots: 4            # full-size DIMM DDR4-2400
   ram_max_gb: 64
+  ram_type: DDR4
   m2_nvme_slots: 1        # PCIe 3.0 x4
   sata: true
   # Same 4-socket UDIMM arithmetic as the 5050 SFF and the 600 G3 SFF above.
@@ -279,52 +294,82 @@ hp-elitedesk-800-g3-sff:
 hp-elitedesk-800-g5-mini:
   ram_slots: 2
   ram_max_gb: 64          # SODIMM DDR4-2666, 32 GB per slot
+  ram_type: DDR4
   m2_nvme_slots: 2        # both PCIe 3.0 x4; WLAN socket excluded
   sata: true
 
 hp-elitedesk-800-g6-mini:
   ram_slots: 2
   ram_max_gb: 64          # SODIMM DDR4-2933
+  ram_type: DDR4
   m2_nvme_slots: 2        # both PCIe 3.0 x4; WLAN socket excluded
   sata: true
 
 hp-prodesk-600-g6-mini:
   ram_slots: 2
   ram_max_gb: 64          # SODIMM DDR4-3200
+  ram_type: DDR4
   m2_nvme_slots: 2        # PCIe x4; the separate M.2 2230 Wi-Fi socket excluded
   sata: true
 
 lenovo-m70q-tiny:
   ram_slots: 2
   ram_max_gb: 64          # DDR4-2933, two SO-DIMM, dual-channel
+  ram_type: DDR4
   m2_nvme_slots: 1        # PSREF lists two M.2 but one is WLAN (see Fields note)
   sata: true              # 1 x 2.5" bay
-  # Gen 1 (DDR4). PSREF documents six generations under this name and Gen 5/6 are
-  # DDR5 — all reach 64 GB, so the ceiling is safe, but ram_type would not be.
-  # Titles at this source do not state the generation.
+  # Gen 1-4. PSREF: all four are two DDR4 SODIMM slots, 64 GB, one M.2 SSD plus
+  # a 2.5" bay. Gen 5 and 6 changed both memory and storage, so they are the
+  # next entry rather than a comment on this one.
+
+lenovo-m70q-gen5-tiny:
+  ram_slots: 2
+  ram_max_gb: 64          # 2 x 32 GB DDR5 SODIMM
+  ram_type: DDR5
+  m2_nvme_slots: 2        # "2x M.2 SSD", PCIe 4.0 x4
+  sata: false             # no 2.5" bay
+  # Gen 5 and 6. PSREF: "Up to 64GB (2x 32GB DDR5 SODIMM)", "Two DDR5 SODIMM
+  # slots"; storage "up to two drives, 2x M.2 SSD". Gen 5 takes 13th/14th-gen
+  # Core, Gen 6 Core Ultra Series 2.
+  # https://psref.lenovo.com/syspool/Sys/PDF/ThinkCentre/ThinkCentre_M70q_Gen_5/ThinkCentre_M70q_Gen_5_Spec.pdf
 
 lenovo-m80q-tiny:
   ram_slots: 2
-  ram_max_gb: 64          # DDR4-2933 (Gen 1); Gen 3 is DDR5-4800, also 64 GB
-  m2_nvme_slots: 2        # PCIe NVMe; Gen 3 is PCIe 4.0 x4
+  ram_max_gb: 64          # DDR4-2933
+  ram_type: DDR4
+  m2_nvme_slots: 1        # PSREF: "1x 2.5" HDD + 1x M.2 SSD"
   sata: true              # 1 x 2.5" bay
-  # Same generation caveat as the m70q: the ceiling holds across generations,
-  # the memory type does not.
+  # Gen 1 only. This entry first read 2 M.2 slots, a figure from the Gen 3 sheet.
+  # https://psref.lenovo.com/syspool/Sys/PDF/ThinkCentre/ThinkCentre_M80q/ThinkCentre_M80q_Spec.pdf
+
+lenovo-m80q-gen3-tiny:
+  ram_slots: 2
+  ram_max_gb: 64          # DDR5-4800
+  ram_type: DDR5
+  m2_nvme_slots: 2        # "1x 2.5" HDD + 2x M.2 SSD"
+  sata: true
+  # Gen 3 and 4, from their PSREF sheets; both read the same for these fields.
+  # https://psref.lenovo.com/syspool/Sys/PDF/ThinkCentre/ThinkCentre_M80q_Gen_3/ThinkCentre_M80q_Gen_3_Spec.pdf
 
 lenovo-m70s-sff:
   ram_slots: 4            # full-size UDIMM, not SODIMM
   ram_max_gb: 128         # DDR4-2933 — the only entry here above 64 GB
+  ram_type: DDR4
   m2_nvme_slots: 1        # PSREF: two M.2, one WLAN one SSD
   sata: true              # 3.5" bay + optional 2.5"
   # 128 GB is the vendor number and it is recorded as-is, but nothing in §2 reads
   # a ceiling above 64 — the requirement is `>= 64`. It is here so the entry
   # matches the documentation rather than the requirement.
+  #
+  # Gen 1, 3 and 4: PSREF gives all three four DDR4 DIMM slots and 128 GB. Gen 5
+  # is two DDR5 UDIMM slots and Gen 6 four, so neither belongs here.
 
 # ── Present in ITRefurbs inventory, 2026-09-27 ───────────────────────────────
 
 lenovo-p340-tiny:
   ram_slots: 2
   ram_max_gb: 64          # 2 x 32 GB DDR4-2933 SO-DIMM
+  ram_type: DDR4
   m2_nvme_slots: 2        # "2x M.2 PCIe SSD", offered only as PCIe NVMe
   sata: false             # "No bays" -- M.2 only
   # Lenovo PSREF, ThinkStation P340 Tiny (read 2026-09-27): "Up to 64GB (2x 32GB
@@ -346,7 +391,9 @@ lenovo-p340-tiny:
 #   dell-optiplex-7010-micro   Dell owner's manual (2 SODIMM, 64 GB)
 #   dell-optiplex-5050-sff     Dell owner's manual (4 DIMM, 64 GB)
 #   lenovo-m70q-tiny           Lenovo PSREF
-#   lenovo-m80q-tiny           Lenovo PSREF (Gen 3 sheet; Gen 1 via search)
+#   lenovo-m80q-tiny           Lenovo PSREF (Gen 1 sheet, re-read 2026-10-02)
+#   lenovo-m70q-gen5-tiny      Lenovo PSREF, Gen 5 and 6 sheets (2026-10-02)
+#   lenovo-m80q-gen3-tiny      Lenovo PSREF, Gen 3 and 4 sheets (2026-10-02)
 #   lenovo-m70s-sff            Lenovo PSREF
 #   hp-elitedesk-800-g3-sff    hardware-corner, NOT an HP document
 #   hp-elitedesk-800-g5-mini   hardware-corner, corroborated by Kingston/HP search

@@ -89,6 +89,11 @@ BRANDS = {
 # originally stopped at the digits.
 MODEL_RE = re.compile(r"\b([mp]\d{2,3}[a-z]?)\b|\b(\d{3,4})\s*(g\d)?\b", re.I)
 
+# Lenovo's generation, read straight after the model: "M70q Gen 5", "M70q G5",
+# "M70q Tiny Gen 4". It is part of the model name the way HP's "G3" is, and it
+# changes the hardware: M70q Gen 5 takes DDR5 where Gen 1-4 take DDR4.
+LENOVO_GEN_RE = re.compile(r"[\s,-]*(?:tiny[\s,-]+)?(?:gen\s*|g)(\d)\b", re.I)
+
 
 def strip_html(body_html):
     """Tags out, entities decoded. Emoji and typographic punctuation survive.
@@ -246,6 +251,9 @@ def _model_number(title):
         return None
     lenovo_style, number, generation = match.groups()
     if lenovo_style:
+        lenovo_gen = LENOVO_GEN_RE.match(text, match.end())
+        if lenovo_gen:
+            return f"{lenovo_style.lower()} gen{lenovo_gen.group(1)}"
         return lenovo_style.lower()
     return f"{number}{(generation or '').lower()}"
 

@@ -26,17 +26,20 @@ RULES = {
     },
     "prefer_shipped_ram_gb": 32,
 }
-PARTS = {"ram": {"ddr4_sodimm_32gb": 325, "ddr4_udimm_32gb_kit": 150},
+PARTS = {"ram": {"ddr4_sodimm_32gb": 325, "ddr4_udimm_32gb_kit": 150,
+                 "ddr5_sodimm_32gb": 560},
          "storage": {"nvme_512gb": None}, "priced_on": "2026-09-22"}
 SELLERS = {"gates": {"min_feedback_percent": 98.0, "min_feedback_score": 100,
                      "returns_accepted": True},
            "fulfillment_adjustment": {"seller_fulfilled": 50},
            "blocked_sellers": {"refurbio": "REFURB.io"}}
 
+CHASSIS = {"hp-elitedesk-800-g5-mini": {"ram_type": "DDR4"},
+           "lenovo-m70q-gen5-tiny": {"ram_type": "DDR5"}}
 
 def _config(out=(), sources=None):
     return {
-        "rules": RULES, "parts": PARTS, "chassis": {}, "watches": [],
+        "rules": RULES, "parts": PARTS, "chassis": CHASSIS, "watches": [],
         "sellers": SELLERS,
         "overrides": [], "out_of_scope": list(out),
         "sources": sources or {"etek": {"source_adjustment": 40},
@@ -107,6 +110,23 @@ def test_real_config_loads():
     root = Path(__file__).resolve().parents[1]
     entries = out_of_scope.load(root / "config" / "out_of_scope.yaml")
     assert all(e["reason"] for e in entries)
+
+
+# ── RAM upgrade priced by the chassis's memory type ─────────────────────────
+
+def test_ddr5_chassis_is_priced_with_the_ddr5_part():
+    """M70q Gen 5 takes DDR5. Pricing it with the DDR4 module, as the parser
+    did while one key covered every generation, was $470 off for two modules."""
+    listing = _listing("gen5")
+    listing["chassis_key"] = "lenovo-m70q-gen5-tiny"
+    price, terms, _ = ranking.score(listing, _config())
+    assert "+ 1120 RAM (2x DDR5 SODIMM)" in terms
+    assert price == 400.0 + 1120 + 40
+
+
+def test_memory_type_without_a_price_raises_rather_than_borrowing_one():
+    with pytest.raises(KeyError):
+        ranking.ram_upgrade_cost({"ram_gb": 16, "ram_slots": 2}, "DDR3", PARTS)
 
 
 # ── Dedup on canonical_key ───────────────────────────────────────────────────

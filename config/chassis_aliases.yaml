@@ -59,10 +59,27 @@ hp:
 
 lenovo:
   "m73": lenovo-m73-tiny
-  "m70q": lenovo-m70q-tiny
-  "m80q": lenovo-m80q-tiny
-  "m70s": lenovo-m70s-sff
+  "m70q gen1": lenovo-m70q-tiny
+  "m70q gen2": lenovo-m70q-tiny
+  "m70q gen3": lenovo-m70q-tiny
+  "m70q gen4": lenovo-m70q-tiny
+  "m70q gen5": lenovo-m70q-gen5-tiny
+  "m70q gen6": lenovo-m70q-gen5-tiny
+  "m80q gen1": lenovo-m80q-tiny
+  "m80q gen3": lenovo-m80q-gen3-tiny
+  "m80q gen4": lenovo-m80q-gen3-tiny
+  "m70s gen1": lenovo-m70s-sff
+  "m70s gen3": lenovo-m70s-sff
+  "m70s gen4": lenovo-m70s-sff
   "p340": lenovo-p340-tiny   # ThinkStation; also a Tower and SFF -- see below
+  # Lenovo models with generations resolve only when the title names one. Gen 5
+  # of the M70q is DDR5 under the same model number, so a bare "m70q" is left
+  # out and held out (§5), even though Lenovo's own name for Gen 1 is plain
+  # "M70q": tracked inventory has plenty of titles that state the generation.
+  # Absent on purpose, each pending what is named:
+  #   m80q gen2        no PSREF sheet exists to enter
+  #   m70s gen5, gen6  DDR5 UDIMM is unpriced in parts.yaml, and Gen 5 has two
+  #                    UDIMM slots, which ram_upgrade_cost would price as SODIMM
 
 # Model numbers are quoted so YAML reads them as strings — unquoted, 3080 is an
 # integer and 600g3 is not, which would make the lookup type-dependent.
@@ -99,4 +116,5 @@ lenovo:
 # was identified the same way (chassis.yaml).
 #
 # Lenovo needs none of this: the suffix IS the form factor (q = Tiny, s = SFF),
-# so m70q and m70s are distinct keys with no ambiguity to resolve.
+# so m70q and m70s are distinct keys with no ambiguity to resolve. Its hazard is
+# the generation instead; see the note under the lenovo aliases.
