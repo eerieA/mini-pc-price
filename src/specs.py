@@ -225,6 +225,42 @@ def chassis_key(title, aliases):
     return aliases.get(brand.lower(), {}).get(number)
 
 
+# Form-factor words, for form_factor_conflict() only. "Mini" is deliberately in
+# none of them: "Mini PC" is generic marketing on eBay and on SFF listings too.
+# Tower is tried first so "Mini Tower" is read whole, not as "mini".
+TOWER_RE = re.compile(r"\bmini[\s-]*tower\b|\btower\b|\bMT\b", re.I)
+SFF_RE = re.compile(r"\bSFF\b|\bsmall\s+form\s+factor\b", re.I)
+SMALL_RE = re.compile(r"\b(?:micro|tiny|usff|mff|ultra\s+small)\b", re.I)
+
+# Which words contradict a chassis, by the form-factor segment of its key.
+_CONFLICTING = {
+    "micro": (TOWER_RE, SFF_RE),
+    "mini": (TOWER_RE, SFF_RE),
+    "tiny": (TOWER_RE, SFF_RE),
+    "sff": (TOWER_RE, SMALL_RE),
+}
+
+
+def form_factor_conflict(title, key):
+    """The title's word that contradicts the chassis `key`, or None.
+
+    Reject-only. The alias table resolves a model number to one chassis, and on
+    eBay one number arrives as Micro, SFF and Tower in the same search results --
+    a 3080 SFF priced as a 3080 Micro is the 5050 hazard (chassis_aliases.yaml).
+    The form-factor word is still never used to RESOLVE a chassis, because the
+    refurbishers' copy is boilerplate ("Ultra" on a Micro, "Tiny Mini" on one
+    title). It is only trusted to veto, and a title without one passes as
+    before.
+    """
+    if not key:
+        return None
+    for pattern in _CONFLICTING.get(key.rsplit("-", 1)[-1], ()):
+        match = pattern.search(title)
+        if match:
+            return match.group(0)
+    return None
+
+
 def parse(title, body_html, chassis, cpus, aliases):
     """Parse one listing. Returns a specs dict including parse_ok and notes.
 
@@ -242,6 +278,10 @@ def parse(title, body_html, chassis, cpus, aliases):
     chassis_spec = chassis.get(key) if key else None
     if key and chassis_spec is None:
         notes.append(f"chassis key {key!r} not in chassis.yaml")
+    conflict = form_factor_conflict(title, key)
+    if conflict:
+        notes.append(f"form factor {conflict!r} contradicts {key}")
+        chassis_spec = None  # held out: the ceiling would be the wrong machine's
 
     cpu_name, cpu_spec = parse_cpu(title, cpus)
     if cpu_name is None:

@@ -356,11 +356,18 @@ ranking and surfaced**, not ranked at `0`, for the same reason an unknown
 chassis is (§5, §8): a missing input that defaults to the flattering value ranks
 a machine better than it is.
 
+The same holds for a marketplace listing with **no shipping quote**. eBay could
+not quote shipping to Canada for 21 of 161 results in the first live search,
+nearly all from the US, and a missing figure is not a free one. Those are held
+out too. The refurbishers keep their `0`: they also state no shipping, but
+their checkout cost is bounded and domestic, so the flattery is small and known.
+
 **Currency is recorded, never converted.** The ranking adds prices across
 sources, so an unconverted US$300 would sit beside C$300 as an equal — an error
 of roughly $100, larger than the `storage_nvme` penalty. Every price in the
 eBay.ca capture was already in C$, including the listings shipping from abroad,
-so conversion is expected never to be needed. If a non-CAD price does arrive,
+and so were all 441 in the first live API poll (2026-10-02), so conversion is
+expected never to be needed. If a non-CAD price does arrive,
 the listing is held out and surfaced rather than ranked.
 
 ### Then flag: is this cheap for what it is?
@@ -839,17 +846,16 @@ was wrong:
 ```yaml
 # config/sellers.yaml
 
-gates:                          # fail any → excluded, regardless of price
-  min_rating: 4.5
-  min_reviews: 100
-  returns_accepted: true
+gates:                          # fail any → set aside and counted, at any price
+  min_feedback_percent: 98.0    # eBay's scale; see below
+  min_feedback_score: 100
+  returns_accepted: true        # no return window: a gate, not a price
 
 fulfillment_adjustment:         # dollars added to effective_price (§2)
   amazon_fulfilled:   0         # A-to-z guarantee covers the risk
   bestbuy_fulfilled:  0
   walmart_fulfilled:  0
   seller_fulfilled:  50         # risk premium for a harder return
-  no_return_window: excluded    # a gate, not a price
 
 blocked_sellers:                # marketplace seller IDs, excluded by name
   refurbio: REFURB.io, excluded as a source above
@@ -857,6 +863,22 @@ blocked_sellers:                # marketplace seller IDs, excluded by name
 
 Gates handle the bad-seller problem, which is genuinely binary. The adjustment
 handles residual risk among sellers who clear the gates. No weights anywhere.
+
+The gates are on eBay's scale, the only marketplace so far: positive-feedback
+percentage and feedback count. The first draft's `min_rating: 4.5` was a
+five-star figure, and its literal translation, 90%, gates almost nobody, since
+established eBay sellers sit at 98–100%. `seller_fulfilled: 50` applies to every
+eBay listing. eBay's Money Back Guarantee covers non-delivery, but a return of a
+working-but-wrong machine, possibly across a border, stays the buyer's problem,
+which is why eBay is not priced like an Amazon-fulfilled order.
+
+`returns_accepted` is the expensive gate. Return terms are only on the full
+item, so the poll makes one call per listing for them, which is most of its
+running time, and in the first live poll it set aside 160 of 441 listings. It
+stays a gate because a machine whose RAM ceiling or nested virtualisation turns
+out wrong is only discovered after the box is open (§5), and with no returns
+that discovery is final. The count prints in every digest, so what the gate
+costs stays visible.
 
 `blocked_sellers` exists because a vendor excluded above can also sell on a
 marketplace, and the numeric gates will not catch it. The 2026-09-30 eBay
@@ -866,6 +888,17 @@ threshold. The §3 exclusions are about the business, not the channel, so they
 follow the vendor onto eBay by name. Each entry carries its reason, as
 `out_of_scope.yaml` entries do, and a blocked listing is counted in the digest
 like a keyword exclusion (§6) rather than dropped silently.
+
+**No eBay username is ever stored.** The production API keyset is enabled under
+eBay's Marketplace Account Deletion exemption, "I do not persist eBay data". The
+alternative was a public endpoint receiving account-deletion events, which is
+a service, and §1 rules services out. The exemption is only honest if no
+seller's identity reaches disk, and `tracker.db` is committed to a public repo.
+So `blocked_sellers` is matched at poll time and only its reason is stored
+(`seller_blocked`), raw responses are saved with the username and sub-country
+location stripped, and the digest prints feedback figures without a name. The
+gates still apply at rank time, since feedback figures identify no one; a
+block-list edit takes effect from the next poll.
 
 The `50` is a statement about **me**, not about the market: it is what a painful
 third-party return is worth avoiding. A $379 seller-fulfilled listing lands at
@@ -904,13 +937,17 @@ title_raw
 canonical_key        -- lenovo:m920q:i5-9500t:16gb:512gb
 brand, model
 cpu, cpu_cores, cpu_threads
+nested_virt          -- from cpus.yaml at parse time; the §2 gate reads it
 ram_gb, ram_type, ram_slots, ram_max_gb
 storage_gb, storage_type
-seller               -- null for direct retailers/refurbishers
+seller               -- null for direct retailers/refurbishers, and for eBay (§3)
+seller_blocked       -- the blocked_sellers reason matched at poll time; else null
 fulfillment          -- amazon_fulfilled | seller_fulfilled | ... | null
 seller_rating        -- null until marketplaces land (Phase 4)
 seller_reviews
+returns_accepted     -- marketplace only; the §3 gate reads it
 ships_from           -- country code; null for domestic-only sources (§2)
+condition            -- marketplace's own grade; "For parts" is set aside (§6)
 first_seen, last_seen
 parse_ok             -- false if the parser failed on this one
 
@@ -924,6 +961,7 @@ compare_at_price     -- vendor "was" price; nullable, weak signal (§2)
 price_max            -- top of a multi-configuration listing's range (§6); else null
 currency             -- as listed; non-CAD is held out, never converted (§2)
 shipping             -- as listed; null where the source does not state it (§2)
+shipping_estimated   -- true when eBay shows a calculated estimate, not a rate
 in_stock
 ```
 
@@ -1144,6 +1182,19 @@ A `(brand, model_number)` pair absent from the alias table is `parse_ok = false`
 and is held out of the ranking — the same rule as a missing chassis entry, for
 the same reason.
 
+**On eBay a form-factor word may veto an alias, never resolve one.** One model
+number arrives as Micro, SFF and Tower in the same results: the 2026-09-30
+capture's "OptiPlex 3080 Micro" search held seven 3080 SFFs and a 3080 Tower
+among the Micros, and the alias table would have priced every one as a Micro.
+So a title naming a form factor that contradicts its alias — `SFF`, `Tower` or
+`MT` on a Micro/Mini/Tiny key; `Micro`, `Tiny`, `USFF` or `MFF` on an SFF key —
+is `parse_ok = false` with a note. The finding above still holds, which is why
+the word is trusted only to reject: a title with no form-factor word resolves as
+before, and every eTek and ITRefurbs title is consistent with its alias. `Mini`
+is in no list, because "Mini PC" is generic marketing on SFF listings too. eBay's
+own Form Factor field is no better than the refurbishers' prose: one 3080 Micro
+listing gave it as "Micro Tower".
+
 ### CPU table
 
 ~15 entries, not 50–100. Only the T- and GE-suffix business chips that actually
@@ -1294,7 +1345,7 @@ print in a section beside the ranking, each as its price range and link:
 
 ```text
   -- multi-configuration (not ranked) --
-  $149.99-$439.99  Dell OptiPlex Tiny Micro i7/i5 up to 32GB   ebay:<seller>
+  $149.99-$439.99  Dell OptiPlex Tiny Micro i7/i5 up to 32GB
                    <url>
 ```
 
@@ -1303,6 +1354,12 @@ stated reason, the failure §9's "every listing appears" rule exists to prevent.
 Expanding each variant into its own row may be possible from the API, but that
 is unverified, and the section works whatever the API turns out to expose, so
 it is the cheaper thing to replace later.
+
+The range comes from the listing's variation group, one extra call each. The
+search returns a single variant's price for the whole group — $339.99 for a
+listing whose variants ran $149.99 to $489.99 — so it cannot supply the range
+itself. The group's variants do carry their own CPU and price, which is what
+expanding them would build on.
 
 Two limits keep it small. Only listings whose chassis reaches 64 GB appear, since
 a capped chassis cannot qualify at any variant and the title names the chassis
@@ -1325,6 +1382,30 @@ A word hiding thirty listings a day stands out in that line. The rule for the
 list: **a word must name a part, never a machine type or an accessory.** `mount`
 fails it — "VESA mount included" is common in genuine mini-PC titles — and so
 would `workstation`, for the reason §9 Phase 3 gives. The list lives in config.
+Blocked sellers, sellers below a gate and sellers accepting no returns are
+counted in the same block, one line per kind. All of them are also left out of
+the what-moved comparison, for the multi-configuration reason above: a caddy
+appearing is not news. Held-out listings (§2) stay in it, since they are
+candidates waiting on a number.
+
+**Held-out listings are counted by reason, with what they would cost.** One
+origin can hold out dozens, so each reason prints once, with how many of its
+listings would qualify and the cheapest of those priced *without* the missing
+term. That is the number that says whether setting `import_adjustment` is worth
+doing today.
+
+**eBay's parse failures are tallied, not listed.** The refurbishers print two
+warning lines per unparsed listing; at eBay's volume that is a hundred lines a
+day, which is a warning nobody reads (§8). The tally names every reason, and an
+unknown chassis by brand and model number, so it doubles as a list of the
+`cpus.yaml` and `chassis.yaml` entries that would pay off:
+
+```text
+  ebay: 203 parse_ok=false, by reason (a listing can have several):
+     104  no storage found in title
+      72  no CPU found in title
+      65  cpu not in cpus.yaml: i5-10400T
+```
 
 ---
 
@@ -1896,11 +1977,26 @@ Two findings from the same capture that the build has to absorb:
 
 - **The search page is evidence, not a feed.** It shows which fields exist, but
   fetching it on a schedule is the marketplace search scraping §3 rejected. The
-  feed is the Browse API, and the developer key is the blocker.
+  feed is the Browse API.
 - **Titles alone parse 21 of 109.** The largest failure is a CPU missing from
   `cpus.yaml` (config), and the next is titles like "i5 10th Gen" that name no
-  CPU at all, which no title parser can fix. The API's per-item spec fields
-  are expected to close that gap; the search page does not show them.
+  CPU at all, which no title parser can fix.
+
+Three more from the first live poll (2026-10-02: 441 listings, 95 parsed, three
+eBay qualifiers), which changed the build:
+
+- **The API searches every category; the website does not.** The same
+  "OptiPlex 3080 Micro" query returned 161 items, 34 of them machines and the
+  rest motherboards, power supplies and RAM. Searches are restricted to
+  category 179 (PC Desktops & All-In-Ones), a structured field, so this is a
+  filter rather than a guess. The keyword list still catches what sellers
+  miscategorise.
+- **The per-item spec fields do not close the CPU gap.** They were expected to.
+  A title saying "i5 10th Gen" has a Processor field saying "Intel Core i5 10th
+  Gen." too. RAM and SSD sizes are there, but they were rarely what failed, so
+  the fields are not read. The remaining fix is `cpus.yaml` entries.
+- **No eBay username is stored** (§3), because of how the production key was
+  enabled.
 
 **The reference price is unconfirmed.** The Browse API returns active listings.
 Sold prices appear to need the Marketplace Insights API, which is limited-release
@@ -2005,3 +2101,9 @@ stays a record of one revision rather than a running log.
 | No shipping term in the effective price (§2) | `shipping` and `import_adjustment` added; currency recorded, never converted | The refurbishers' JSON carries no shipping, so it was invisible. On eBay it ran from free to $1,131 across one search, 66 of 110 listings shipped from abroad, and a cheap US listing ranked without it is not cheap. Import cost is a hand-set figure per origin rather than a duty rate, because computers enter duty-free and the real cost is brokerage and returns |
 | Per-URL out-of-scope list for every source (§9 Phase 3) | Plus a keyword exclusion list for eBay, counted in the digest (§6) | A per-URL chore works for ten products and not for eBay's volume. Restricted to words naming parts, which avoids the machine-type word that sank a keyword rule in Phase 3 |
 | -- | Multi-configuration listings in an unranked section (§6) | A price range across configurations is not one machine. Skipping them hides inventory; expanding variants depends on unverified API data |
+| Form factor never parsed (§5) | Parsed on every source, but only to veto an alias, never to resolve one | eBay returns one model number as Micro, SFF and Tower in the same search, and the alias table priced all three as the Micro. The refurbisher finding that form-factor words are boilerplate still holds, so a word is trusted only to reject |
+| Seller gates on a 5-star scale (§3) | eBay's percentage and count, `98.0` / `100`, plus `returns_accepted` | The only marketplace reports feedback as a percentage, and a literal 4.5/5 = 90% gates almost nobody. Returns cost 160 of 441 listings in the first poll and stay a gate, because the hardware facts that matter are only checkable once the box is open |
+| eBay's per-item spec fields expected to fix CPU parsing (§9) | Not read; `cpus.yaml` entries instead | Checked against the live API: the Processor field repeats the title's "i5 10th Gen". A field that answers nothing is not worth a call |
+| -- | Searches restricted to eBay category 179 (§9) | The API, unlike the website, searches every category: 127 of 161 results for one query were parts |
+| -- | No eBay username stored anywhere (§3) | The production keyset is enabled under eBay's "I do not persist eBay data" exemption; the alternative was a public deletion-notification endpoint, which is a service (§1). Block list applied at poll time, raw responses scrubbed |
+| -- | Marketplace parse failures tallied by reason (§6) | Two warning lines per listing is a hundred lines a day at eBay's volume. The tally keeps every reason visible and names the config entries that would pay off |

@@ -48,6 +48,60 @@ sources:
     # deliver or refund -- a price, not a gate. Unlike eTek's $40 it is not
     # anchored to a published number, and it is held loosely for that reason.
 
+  - id: ebay
+    name: eBay.ca (Browse API)
+    type: marketplace
+    # Structured JSON from eBay's Browse API (plan.md §3, §9 Phase 4): no
+    # selectors, and seller reputation arrives as fields. Credentials come from
+    # the environment, never from here -- see src/ebay.py.
+    browse_api: EBAY_CA
+    # Fixed-price only: auctions are a different purchase mode from the buy-now
+    # assumption running through §2.
+    filter: "buyingOptions:{FIXED_PRICE},deliveryCountry:CA"
+    # PC Desktops & All-In-Ones. Without it the API searches every category:
+    # the first live "OptiPlex 3080 Micro" search returned 161 items, of which
+    # 34 were machines and the rest motherboards, power supplies, RAM and
+    # cases. eBay's web search had defaulted to this category in the capture,
+    # which is why plan.md never planned for it. A category is a structured
+    # field, so this is a filter, not a guess -- the keyword list below still
+    # catches what sellers miscategorise (a caddy, in that same search).
+    category_ids: "179"
+
+    # One search per chassis that can reach 64 GB. A capped chassis cannot
+    # qualify at any price, so searching for it only adds near-misses. eBay's
+    # search is fuzzy -- "3080 Micro" also returns 7080s, 3080 SFFs and parts --
+    # which is what the form-factor guard (src/specs.py) and the keyword list
+    # below are for. Add a query when a chassis is added to chassis.yaml.
+    queries:
+      - "OptiPlex 3080 Micro"
+      - "OptiPlex 7010 Micro"       # also matches the 2012 7010 USFF, whose
+                                    # 3rd-gen CPUs are not in cpus.yaml
+      - "EliteDesk 800 G5 Mini"
+      - "EliteDesk 800 G6 Mini"
+      - "ProDesk 600 G6 Mini"
+      - "ThinkCentre M70q"
+      - "ThinkCentre M80q"
+      - "ThinkStation P340 Tiny"
+      # 4-socket SFFs: 64 GB from two UDIMM kits, about half the SODIMM cost.
+      - "ProDesk 600 G3 SFF"
+      - "EliteDesk 800 G3 SFF"
+      - "ThinkCentre M70s"
+
+    # Words that mark a part rather than a machine (plan.md §6). A title
+    # containing one is set aside and counted by word in the digest, so a word
+    # hiding real listings shows up as a large count. The rule for adding one:
+    # it must name a PART, never a machine type or an accessory -- "mount" fails
+    # ("VESA mount included" is common in real titles), and so would
+    # "workstation" (the P340 is one).
+    exclude_keywords:
+      - caddy
+      - bezel
+      - motherboard
+      - barebone
+
+    # No source_adjustment. A marketplace's risk is the seller's, not eBay's,
+    # and is priced per listing by sellers.yaml's fulfillment_adjustment.
+
 # ── The collection handle IS the selector ────────────────────────────────────
 # Shopify answers a wrong or retired handle with HTTP 200 and {"products": []},
 # which is indistinguishable from a sold-out collection. Tier 0 removes selector

@@ -392,3 +392,67 @@ def test_lenovo_thinkstation_model_number():
     so without the prefix the model regex finds nothing at all."""
     assert specs._model_number("Lenovo ThinkStation P340 Workstation (Intel "
                                "i3-10300T / 16 GB RAM / 256 GB SSD)") == "p340"
+
+
+# ── Form-factor guard (eBay) ─────────────────────────────────────────────────
+# The alias table maps a model number to one chassis, which held for the
+# refurbishers and does not hold on eBay: one search for "OptiPlex 3080 Micro"
+# (2026-09-30 capture) returned seven 3080 SFFs and a 3080 Tower among the
+# Micros. The guard only ever REJECTS -- a form-factor word never resolves a
+# chassis, because the refurbishers' copy is boilerplate (chassis_aliases.yaml).
+# Titles verbatim from that capture unless noted.
+
+FORM_FACTOR_CONFLICTS = [
+    ("Dell OptiPlex 3080 SFF Core i5-10500 3.10 GHz 8 GB DDR4 256 GB NVMe Windows 11",
+     "SFF"),
+    ("Dell Optiplex 3080 SFF Desktop i5-10500 3.10GHz 32GB 512GB SSD Windows 11 Pro",
+     "SFF"),
+    ("Dell OptiPlex 3080 Tower Core i5-10500 3.10 GHz 8 GB DDR4 256 GB NVMe Windows 11",
+     "Tower"),
+    # Constructed: the reverse direction, a small-chassis word on an SFF alias.
+    ("HP ProDesk 600 G3 Mini i5-6500T 8GB 256GB SSD", None),
+    ("HP ProDesk 600 G3 USFF i5-6500T 8GB 256GB SSD", "USFF"),
+    ("HP EliteDesk 800 G3 Micro i5-6500T 8GB 256GB SSD", "Micro"),
+    ("Lenovo ThinkCentre M70s Small Form Factor i5-10400 16GB 256GB SSD", None),
+]
+
+
+@pytest.mark.parametrize("title, word", FORM_FACTOR_CONFLICTS)
+def test_form_factor_word_contradicting_the_alias_is_held_out(
+        title, word, chassis, cpus, aliases):
+    """A 3080 SFF priced as a Micro is the 5050 hazard again: two UDIMM slots
+    costed as SODIMMs, or a tower ranked as a mini. Held out, never resolved.
+
+    "Mini" on an SFF alias is NOT a conflict (case 4): "Mini PC" is generic
+    marketing on eBay, and rejecting on it would hide real SFFs. "Small Form
+    Factor" on an SFF chassis (last case) agrees with it."""
+    assert specs.form_factor_conflict(title, specs.chassis_key(title, aliases)) == word
+    if word:
+        parsed = specs.parse(title, "", chassis, cpus, aliases)
+        assert parsed["parse_ok"] is False
+        assert "form factor" in parsed["parse_notes"]
+
+
+@pytest.mark.parametrize("title", [
+    # eBay, verbatim: every small-form-factor spelling in the capture.
+    "Dell Optiplex 3080 Micro PC i5-10500T 16GB DDR4 256GB m2 SSD WIN11 w/AC Adapter",
+    "Dell Optiplex MFF 3080 i5-10500T 2.30Ghz 16 GB Ram 256GB NVMe Window 11 Pro WIFI",
+    "Dell OptiPlex 3080 i5-10500T 256GB 8GB Black Micro Desktop Win 11 Computer PC",
+    "Mini PC Dell OptiPlex 3080 Micro NVMe SSD i3 i5 i7 16/32GB RAM WiFi Win 11 Pro",
+    # The refurbishers' boilerplate must keep resolving: "Ultra" and "Tiny Mini".
+    "Dell Optiflex 3080 Ultra i5-10500T 16GB 256 SSD Windows 11 Pro Mini Computer Pc Refurbished",
+    "Lenovo M73 Core i5-4570T 8GB 120 SSD Windows 10 Pro Tiny Mini Desktop Pc Refurbished",
+    "HP ProDesk 600 G3 SFF Desktop core i5-6500T 16GB 120 SSD Windows 11 Pro Refurbished",
+    "Refurbished (Excellent) - HP EliteDesk 800 G3 SFF SFF Desktop (Intel i5-7500 / 8 GB RAM / 2 TB HDD / Windows 10 Pro)",
+    # No form-factor word at all resolves as before.
+    "Refurbished (Excellent) - HP EliteDesk 800 G4 Desktop (Intel i5-8500 / 8 GB RAM / 256 GB SSD / Windows 11 Pro)",
+])
+def test_consistent_or_absent_form_factor_is_not_a_conflict(title, aliases):
+    assert specs.form_factor_conflict(title, specs.chassis_key(title, aliases)) is None
+
+
+def test_mini_tower_is_a_tower_not_a_mini():
+    """"Mini Tower" contains "mini", and reading it as a small chassis would wave
+    a tower through on a Micro alias."""
+    assert specs.form_factor_conflict("Dell OptiPlex 3080 Mini Tower i5-10500",
+                                      "dell-optiplex-3080-micro") == "Mini Tower"

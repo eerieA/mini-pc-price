@@ -56,6 +56,9 @@ jobs:
       - name: Poll
         id: poll
         continue-on-error: true
+        env:
+          MINIPC_EBAY_CLIENT_ID: ${{ secrets.MINIPC_EBAY_CLIENT_ID }}
+          MINIPC_EBAY_CLIENT_SECRET: ${{ secrets.MINIPC_EBAY_CLIENT_SECRET }}
         run: python src/poll.py
 
       - name: Digest

@@ -182,7 +182,12 @@ def main(argv=None):
     # Out-of-scope listings are left out of the comparison on both sides. A
     # gaming tower's price move is not a reason to send, and dropping one from
     # only the current side would report it as "gone" the day it was dismissed.
-    dismissed = {l["url"] for l, _ in ranking_result[3]}
+    # Set-aside marketplace listings likewise: a caddy appearing on eBay is not
+    # news, and a multi-configuration range moves whenever one variant sells
+    # out (§6). Held-out listings stay in -- they are candidates waiting on a
+    # number, and their movement is real.
+    dismissed = {l["url"] for l, _ in ranking_result[3]} | {
+        e["listing"]["url"] for e in ranking_result[4] if e["kind"] != "held out"}
     coverage_status = coverage.report(conn)
     previous = changes.load_previous(conn)
     if previous is not None:

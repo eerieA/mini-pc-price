@@ -1,0 +1,37 @@
+# Marketplace seller handling (plan.md §3, "Seller handling"): gates, a dollar
+# adjustment, and a block list. eBay is the only marketplace so far, so every
+# value below is on eBay's scale.
+#
+# Gates are binary on purpose. For one purchase, seller risk is not a gradient
+# traded against $20 -- the seller is acceptable or not. The residual risk among
+# sellers who pass is a price, below.
+
+gates:                          # fail any -> set aside and counted, at any price
+  min_feedback_percent: 98.0    # eBay positive-feedback %, not a 5-star rating.
+  min_feedback_score: 100       # Established eBay sellers sit at 98-100%, so a
+                                # literal 4.5/5 = 90% would gate almost nobody.
+  returns_accepted: true        # no return window: a gate, not a price (§3).
+                                # Costly: 16 of 30 desktops in the first
+                                # live search took no returns. Each set-aside
+                                # listing is counted in the digest, so the cost
+                                # stays visible.
+
+fulfillment_adjustment:         # dollars added to effective_price (§2)
+  seller_fulfilled: 50
+  # A statement about the buyer, not the market: what a painful third-party
+  # return is worth avoiding. Every eBay listing is seller-fulfilled. eBay's
+  # Money Back Guarantee covers non-delivery, but a return of a working-but-
+  # wrong machine, possibly across the border, is still the buyer's problem --
+  # which is why this is not 0 the way an Amazon-fulfilled order would be.
+
+blocked_sellers:                # eBay usernames, excluded by name with a reason
+  refurbio: "REFURB.io, excluded as a source (plan.md §3)"
+  # The §3 exclusions are about the business, not the channel. The 2026-09-30
+  # capture had refurbio at 99% positive from 3.6K reviews with an eBay
+  # Refurbished badge -- clear of every gate above. Counted in the digest like a
+  # keyword exclusion, never dropped silently.
+  #
+  # Applied by poll.py, not by the ranking: the username is matched as the item
+  # is read and only the reason above is stored, because no eBay username may
+  # reach disk (src/ebay.py). So an edit here takes effect from the next poll,
+  # unlike the gates, which re-apply on every report.

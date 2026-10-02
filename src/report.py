@@ -17,6 +17,7 @@ killing the run.
 
 import re
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,14 @@ def format_listing(listing, price, terms, misses, rules):
                  f"{listing['storage_gb']}GB {listing['storage_type'].upper()}"
                  f"{shipped_marker}")
 
+    if listing.get("fulfillment"):
+        # A marketplace listing is two decisions, the machine and the seller.
+        # The seller's name is on the listing page, never stored (src/ebay.py).
+        origin = f" | ships from {listing['ships_from']}" if listing.get("ships_from") else ""
+        lines.append(f"           seller {listing['seller_rating']}% "
+                     f"({listing['seller_reviews']}) | {listing['condition']}{origin}")
+    if listing.get("shipping_estimated"):
+        lines.append("           ! shipping is eBay's estimate, not a listed rate")
     if listing.get("overridden"):
         # A ranking that silently depends on an emailed answer is not checkable.
         lines.append("           ! vendor-confirmed, not from the listing page")
@@ -112,9 +121,8 @@ def build_report(listings, config, ranked=None):
     out = []
 
     if ranked is None:
-        ranked, unparsed, excluded, dismissed = ranking.rank(listings, config)
-    else:
-        ranked, unparsed, excluded, dismissed = ranked
+        ranked = ranking.rank(listings, config)
+    ranked, unparsed, excluded, dismissed, set_aside = ranked
     qualifiers, near_misses = ranking.split(ranked)
     requirements = rules["requirements"]
 
@@ -163,11 +171,90 @@ def build_report(listings, config, ranked=None):
             out.append(f"  {listing['source_id']:<9} "
                        f"{short_title(listing['title_raw'], 40):<43} {reason}")
 
+    out.extend(multi_config_lines(set_aside))
+    out.extend(held_out_lines(set_aside))
+    out.extend(set_aside_lines(set_aside))
+
     out.append("=" * WIDTH)
     out.extend(summary_lines(qualifiers, near_misses, rules))
     out.extend(warning_lines(ranked, unparsed, config,
                              stale=_stale_sources(listings)))
     return "\n".join(out)
+
+
+def multi_config_lines(set_aside):
+    """One listing offering several configurations at one URL (§6). Unranked:
+    a price range is not one machine, but hiding it hides live inventory."""
+    rows = sorted((e["listing"] for e in set_aside if e["kind"] == "multi-config"),
+                  key=lambda l: l["price"])
+    if not rows:
+        return []
+    out = ["", f"MULTI-CONFIGURATION - not ranked, chassis can reach 64GB "
+               f"({len(rows)})", "-" * WIDTH]
+    for listing in rows:
+        span = f"${listing['price']:.2f}-${listing['price_max']:.2f}"
+        out.append(f"  {span:<18} {short_title(listing['title_raw'], 48)}")
+        out.append(f"           {listing['url']}")
+    return out
+
+
+def held_out_lines(set_aside):
+    """Scored listings waiting on a config value (§2), counted by reason.
+
+    Counted rather than listed because one origin can hold out sixty listings.
+    The cheapest qualifier among them is the number that says whether setting
+    the value is worth doing today -- priced WITHOUT the missing term, and
+    labelled so.
+    """
+    held = [e for e in set_aside if e["kind"] == "held out"]
+    if not held:
+        return []
+    out = ["", f"HELD OUT - an input is missing, so not ranked ({len(held)})",
+           "-" * WIDTH]
+    for reason, count in Counter(e["detail"] for e in held).most_common():
+        line = f"  {count:>3}  {reason}"
+        qualifying = sorted(e["row"][0] for e in held
+                            if e["detail"] == reason and not e["row"][3])
+        if qualifying:
+            line += (f" | {len(qualifying)} would qualify, cheapest "
+                     f"${qualifying[0]:.2f} before that term")
+        out.append(line)
+    return out
+
+
+# The set-aside kinds summarised by set_aside_lines, in print order, with the
+# words the digest uses for each.
+_COUNTED_KINDS = {
+    "keyword": "excluded by keyword",
+    "for parts": "listed for parts or not working",
+    "blocked seller": "from a blocked seller",
+    "no returns": "from sellers accepting no returns",
+    "seller gate": "seller below gate",
+    "multi-config capped": "multi-configuration on a chassis capped below 64GB",
+}
+
+
+def set_aside_lines(set_aside):
+    """One counted line per kind, its details tallied (§6):
+
+        ebay: 14 excluded by keyword (caddy 5, bezel 4, motherboard 3, ...)
+
+    Counted, never listed and never dropped. A word hiding thirty listings a day
+    stands out in that line, which is the whole check on the keyword list.
+    """
+    out = []
+    for kind, words in _COUNTED_KINDS.items():
+        entries = [e for e in set_aside if e["kind"] == kind]
+        for source in sorted({e["listing"]["source_id"] for e in entries}):
+            tally = Counter(e["detail"] for e in entries
+                            if e["listing"]["source_id"] == source)
+            detail = ", ".join(f"{d} {n}" for d, n in tally.most_common(6))
+            more = ", ..." if len(tally) > 6 else ""
+            out.append(f"  {source}: {sum(tally.values())} {words} "
+                       f"({detail}{more})")
+    if out:
+        out = ["", "SET ASIDE - counted, not candidates", "-" * WIDTH] + out
+    return out
 
 
 def header_line(listings, dismissed):
@@ -311,15 +398,51 @@ def warning_lines(ranked, unparsed, config, stale=None):
             "risk is priced in. Compare them to sources.yaml rows with care."
         )
 
+    marketplace = [l for l in unparsed if l.get("fulfillment")]
     for listing in unparsed:
+        if listing.get("fulfillment"):
+            continue  # counted below, not listed
         warnings.append(f"parse_ok=false: {listing['title_raw'][:56]}")
         if listing["parse_notes"]:
             warnings.append(f"  {listing['parse_notes'][:70]}")
+    warnings.extend(unparsed_tally(marketplace))
 
     warnings.append(f"parts.yaml priced {config['parts']['priced_on']}; "
                     f"DDR4 is EOL and rising 10-20%/mo.")
 
     return ["", "warnings", "-" * WIDTH] + [f"  ! {w}" for w in warnings]
+
+
+# parse_notes that record where a value came from, not why parsing failed.
+_INFORMATIONAL_NOTE = re.compile(r"read from description|variants; only")
+
+
+def unparsed_tally(listings):
+    """Marketplace parse failures counted by reason, not listed one by one.
+
+    eBay's volume would turn the two-lines-per-listing warning into a hundred
+    lines a day, and a warning that long is one nobody reads (§8). The tally
+    still names every reason, and an unknown chassis is named by brand and
+    model number -- the counts say which chassis.yaml entries would pay off.
+    A listing with two problems is counted under both.
+    """
+    if not listings:
+        return []
+    tally = Counter()
+    for listing in listings:
+        for note in (listing["parse_notes"] or "").split("; "):
+            if not note or _INFORMATIONAL_NOTE.search(note):
+                continue
+            if note.startswith("no chassis key"):
+                title = listing["title_raw"]
+                note = (f"no chassis key: {specs._brand(title) or '?'} "
+                        f"{specs._model_number(title) or '?'}")
+            tally[note] += 1
+    source = listings[0]["source_id"]
+    lines = [f"{source}: {len(listings)} parse_ok=false, by reason "
+             f"(a listing can have several):"]
+    lines += [f"  {count:>3}  {note[:66]}" for note, count in tally.most_common()]
+    return lines
 
 
 def main():

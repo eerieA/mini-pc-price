@@ -8,6 +8,8 @@ lived in report.py, and duplicating it here would have been the wrong move.
 Nothing in this module renders anything. Effective price is defined once.
 """
 
+import re
+from numbers import Number
 from pathlib import Path
 
 import yaml
@@ -27,6 +29,7 @@ def load_config():
         "rules": read("rules.yaml"),
         "parts": read("parts.yaml"),
         "chassis": read("chassis.yaml"),
+        "sellers": read("sellers.yaml"),
         "sources": {s["id"]: s for s in read("sources.yaml")["sources"]},
         "watches": watches.load(CONFIG / "watch_urls.yaml"),
         "overrides": overrides.load(CONFIG / "listing_overrides.yaml"),
@@ -102,7 +105,90 @@ def score(listing, config):
         price += adjustment
         terms.append(f"+ {adjustment} src")
 
+    # Marketplace terms (§2, §3). The Shopify sources state none of these and
+    # pay nothing for them, which §2 records as flattering them on shipping.
+    fulfillment = config["sellers"]["fulfillment_adjustment"].get(
+        listing.get("fulfillment"), 0)
+    if fulfillment:
+        price += fulfillment
+        terms.append(f"+ {fulfillment} seller")
+    if listing.get("shipping"):
+        price += listing["shipping"]
+        # "~" when eBay shows only an estimate (§2): the sum rests on it.
+        mark = "~" if listing.get("shipping_estimated") else ""
+        terms.append(f"+ {mark}{listing['shipping']:.2f} ship")
+    duty = import_adjustment(listing, rules)
+    if isinstance(duty, Number) and duty:
+        price += duty
+        terms.append(f"+ {duty} import")
+
     return price, terms, misses
+
+
+def import_adjustment(listing, rules):
+    """Dollars for this listing's ships-from country, or the config's raw value.
+
+    None for a source that states no origin (the domestic Shopify stores). A
+    non-number -- `TBD` -- comes back as it is and holds the listing out of the
+    ranking (held_out_reason), never as 0.
+    """
+    origin = listing.get("ships_from")
+    if origin is None:
+        return None
+    table = rules["import_adjustment"]
+    return table.get(origin, table["default"])
+
+
+def held_out_reason(listing, rules):
+    """Why a scored listing cannot be ranked yet, or None (§2).
+
+    Both cases are missing inputs that would default to the flattering value,
+    the same reason an unknown chassis is held out rather than assumed (§5).
+    """
+    currency = listing.get("currency")
+    if currency and currency != "CAD":
+        # Never converted: an unconverted US$300 beside C$300 is a ~$100 error.
+        return f"priced in {currency}"
+    if not isinstance(import_adjustment(listing, rules), (Number, type(None))):
+        return f"ships from {listing['ships_from']}, import_adjustment TBD"
+    if listing.get("fulfillment") and listing.get("shipping") is None:
+        # eBay could not quote shipping to Canada. The Shopify sources state
+        # no shipping either and are charged 0 (§2), but a marketplace listing
+        # can cost anything to ship, so it waits rather than ranks at 0.
+        return "shipping not quoted"
+    return None
+
+
+def set_aside_reason(listing, config):
+    """(kind, detail) for a marketplace listing that is not a candidate, or None.
+
+    Every one of these is COUNTED in the digest by kind and detail, never
+    dropped (§3, §6): a keyword hiding thirty real listings a day has to be
+    visible as a large count to be noticed at all.
+    """
+    source = config["sources"].get(listing["source_id"], {})
+    for word in source.get("exclude_keywords", []):
+        if re.search(rf"\b{re.escape(word)}s?\b", listing["title_raw"], re.I):
+            return "keyword", word
+    # eBay's condition is a structured field, so it needs no keyword.
+    if (listing.get("condition") or "").lower().startswith("for parts"):
+        return "for parts", listing["condition"]
+
+    if listing.get("fulfillment") is None:
+        return None  # not a marketplace listing; no seller to judge
+    # Matched against the block list at poll time, since the username is never
+    # stored (src/ebay.py) -- so a block-list edit applies from the next poll.
+    if listing.get("seller_blocked"):
+        return "blocked seller", listing["seller_blocked"]
+    gates = config["sellers"]["gates"]
+    if gates["returns_accepted"] and not listing.get("returns_accepted"):
+        return "no returns", "seller accepts none"
+    # A missing figure fails the gate rather than passing it: never default.
+    if (listing.get("seller_rating") or 0) < gates["min_feedback_percent"]:
+        return "seller gate", f"feedback {listing.get('seller_rating')}%"
+    if (listing.get("seller_reviews") or 0) < gates["min_feedback_score"]:
+        return "seller gate", f"{listing.get('seller_reviews')} reviews"
+    return None
 
 
 def gated(listing, rules):
@@ -113,17 +199,23 @@ def gated(listing, rules):
 
 
 def rank(listings, config):
-    """Partition listings into ranked / unparsed / excluded / out of scope.
+    """Partition listings into ranked / unparsed / excluded / out of scope / set
+    aside.
 
-    Returns (ranked, unparsed, excluded, dismissed) where ranked is a list of
-    (effective_price, listing, terms, misses) sorted by price, with duplicate
-    configurations folded under the cheapest (see collapse_duplicates). A
-    listing that fails to parse is never silently dropped, and a gated or
-    out-of-scope one carries its reason, because every listing has to appear in
-    the output (§9, §8).
+    Returns (ranked, unparsed, excluded, dismissed, set_aside) where ranked is a
+    list of (effective_price, listing, terms, misses) sorted by price, with
+    duplicate configurations folded under the cheapest (see
+    collapse_duplicates). A listing that fails to parse is never silently
+    dropped, and a gated or out-of-scope one carries its reason, because every
+    listing has to appear in the output (§9, §8).
+
+    `set_aside` is the marketplace's volume, which cannot be listed one by one:
+    dicts of {listing, kind, detail}, plus `row` -- the scored tuple -- for a
+    held-out listing. Kinds: those of set_aside_reason(), "multi-config" (shown
+    in its own section, §6), "multi-config capped" and "held out".
     """
     rules = config["rules"]
-    ranked, unparsed, excluded, dismissed = [], [], [], []
+    ranked, unparsed, excluded, dismissed, set_aside = [], [], [], [], []
 
     for listing in listings:
         # First, ahead of parse_ok: most out-of-scope listings do not parse, and
@@ -131,6 +223,24 @@ def rank(listings, config):
         reason = out_of_scope.reason_for(listing, config["out_of_scope"])
         if reason:
             dismissed.append((listing, reason))
+            continue
+        # Also ahead of parse_ok, for the same reason: a drive caddy does not
+        # parse either, and it is not parser breakage.
+        reason = set_aside_reason(listing, config)
+        if reason:
+            set_aside.append({"listing": listing, "kind": reason[0],
+                              "detail": reason[1]})
+            continue
+        if listing.get("price_max") is not None:
+            # A price range across configurations is not one machine (§6). Shown
+            # only where the chassis can reach the RAM target at some variant;
+            # the title names the chassis even when it names no configuration.
+            ceiling = listing["ram_max_gb"]
+            capable = ceiling and ceiling >= rules["requirements"]["ram_max_gb"]["min"]
+            set_aside.append({
+                "listing": listing,
+                "kind": "multi-config" if capable else "multi-config capped",
+                "detail": listing["chassis_key"] or "unknown chassis"})
             continue
         if not listing["parse_ok"]:
             unparsed.append(listing)
@@ -143,10 +253,17 @@ def rank(listings, config):
         # database keeps what the page said; the ranking uses what we know.
         listing["overridden"] = overrides.apply(listing, config["overrides"])
         price, terms, misses = score(listing, config)
+        reason = held_out_reason(listing, rules)
+        if reason:
+            set_aside.append({"listing": listing, "kind": "held out",
+                              "detail": reason,
+                              "row": (price, listing, terms, misses)})
+            continue
         ranked.append((price, listing, terms, misses))
 
     ranked.sort(key=lambda r: r[0])
-    return collapse_duplicates(ranked), unparsed, excluded, dismissed
+    return (collapse_duplicates(ranked), unparsed, excluded, dismissed,
+            set_aside)
 
 
 def collapse_duplicates(ranked):

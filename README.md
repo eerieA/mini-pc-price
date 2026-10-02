@@ -19,6 +19,8 @@ effective_price = listing price
                 + cost to reach 64 GB RAM      (from config/parts.yaml)
                 + penalties for what it misses (from config/rules.yaml)
                 + a vendor recourse adjustment (from config/sources.yaml)
+                + eBay only: seller risk, shipping, import cost
+                  (config/sellers.yaml, config/rules.yaml)
 ```
 
 One requirement is absolute: `nested_virt`. A CPU without it cannot run the lab
@@ -62,6 +64,18 @@ reads it automatically:
 cp .env.example .env
 ```
 
+`poll.py` reads the same file for eBay's two credentials, the production App ID
+and Cert ID from developer.ebay.com:
+
+```sh
+MINIPC_EBAY_CLIENT_ID      the App ID (client id)
+MINIPC_EBAY_CLIENT_SECRET  the Cert ID (client secret)
+```
+
+The keyset is enabled under eBay's "I do not persist eBay data" exemption, so no
+eBay seller's username is ever written to the database or to `data/raw/`
+(`src/ebay.py`, `plan.md` §3). Keep it that way when changing the eBay code.
+
 `.env` is git-ignored and `.env.example` holds only placeholders. **Real
 environment variables win over `.env`**, so a stale file in the working
 directory cannot quietly override a scheduled task that sets them properly.
@@ -79,13 +93,15 @@ It runs in CI rather than on a desktop for one reason: **an observation cannot
 be backfilled.** A machine asleep at the scheduled hour simply loses that day,
 and the price history is the thing a months-long run is accumulating.
 
-Three repository secrets are required (Settings → Secrets and variables →
+Five repository secrets are required (Settings → Secrets and variables →
 Actions):
 
 ```
-MINIPC_SMTP_USER   the Gmail address that authenticates
-MINIPC_SMTP_PASS   a Google App Password
-MINIPC_DIGEST_TO   where the digest goes
+MINIPC_SMTP_USER           the Gmail address that authenticates
+MINIPC_SMTP_PASS           a Google App Password
+MINIPC_DIGEST_TO           where the digest goes
+MINIPC_EBAY_CLIENT_ID      eBay production App ID
+MINIPC_EBAY_CLIENT_SECRET  eBay production Cert ID
 ```
 
 **The digest only sends when something moved** — a price changed, a listing
@@ -129,6 +145,9 @@ Logs land in `logs/daily-YYYY-MM.log`, git-ignored.
 | `+ 325 RAM` | Real parts cost to reach 64 GB, priced in `parts.yaml` |
 | `+ 40 pen` | A requirement missed, charged at its `rules.yaml` penalty |
 | `+ 40 src` | Vendor recourse risk (`source_adjustment`) |
+| `+ 50 seller` | eBay seller risk (`sellers.yaml` `fulfillment_adjustment`) |
+| `+ 25.00 ship` | eBay shipping as listed; `~` marks eBay's estimate |
+| `+ 40 import` | Cross-border cost by ships-from country (`rules.yaml` `import_adjustment`) |
 | `32->64GB` | Ships with 32 GB, reaches 64 GB |
 | `*` | Ships at or above `prefer_shipped_ram_gb` — no EOL DDR4 to source |
 | `x ...` | Which requirements it misses |
@@ -164,6 +183,7 @@ Thresholds, penalties, vendor adjustments and hardware facts live in
 | `parts.yaml` | RAM and NVMe upgrade costs, with the date they were priced |
 | `listing_overrides.yaml` | Vendor-confirmed facts a listing page does not state |
 | `out_of_scope.yaml` | Listings judged by hand not to be candidates (towers), by URL |
+| `sellers.yaml` | eBay seller gates, the seller risk premium, blocked sellers |
 | `digest.yaml` | Where the daily email goes (no secrets) |
 
 Two config rules worth knowing before editing:
