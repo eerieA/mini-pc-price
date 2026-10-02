@@ -122,3 +122,116 @@ i3-10300T: {cores: 4, threads: 8,  gen: 10, tdp: 35, nested_virt: true}
 # https://www.intel.com/content/www/us/en/products/sku/199282/intel-core-i310300t-processor-8m-cache-up-to-3-90-ghz/specifications.html
 # In ITRefurbs' ThinkStation P340 Tiny. Four cores, so that listing misses
 # cpu_cores whatever its chassis can take.
+
+# ── Added for eBay inventory, 2026-10-02 ─────────────────────────────────────
+# Every CPU named by a parse_ok = false listing in the first eBay poll, so
+# "on demand" still holds: each appears in tracked inventory. Some of those
+# listings also fail on chassis or storage and will not rank until that is
+# fixed too. All 39 verified against Intel ARK 2026-10-02; all support VT-x
+# with EPT. 12th gen and later follow the P-core rule above; a part with no
+# E-cores says so, since assuming every 12th-gen chip is hybrid would be wrong
+# for six of them.
+
+i5-3570:   {cores: 4, threads: 4,  gen: 3 , tdp: 77, nested_virt: true}
+# Ivy Bridge; ARK files it under Legacy Intel Core, gen taken from the code name.
+# A 2012 OptiPlex 7010, which shares its model number with the 2023 one.
+# https://www.intel.com/content/www/us/en/products/sku/65702/intel-core-i53570-processor-6m-cache-up-to-3-80-ghz/specifications.html
+i5-6500:   {cores: 4, threads: 4,  gen: 6 , tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/88184/intel-core-i56500-processor-6m-cache-up-to-3-60-ghz/specifications.html
+i5-6600T:  {cores: 4, threads: 4,  gen: 6 , tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/88189/intel-core-i56600t-processor-6m-cache-up-to-3-50-ghz/specifications.html
+i7-6700:   {cores: 4, threads: 8,  gen: 6 , tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/88196/intel-core-i76700-processor-8m-cache-up-to-4-00-ghz/specifications.html
+i5-7500T:  {cores: 4, threads: 4,  gen: 7 , tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/97121/intel-core-i57500t-processor-6m-cache-up-to-3-30-ghz/specifications.html
+i5-7600:   {cores: 4, threads: 4,  gen: 7 , tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/97150/intel-core-i57600-processor-6m-cache-up-to-4-10-ghz/specifications.html
+i7-7700:   {cores: 4, threads: 8,  gen: 7 , tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/97128/intel-core-i77700-processor-8m-cache-up-to-4-20-ghz/specifications.html
+i7-7700T:  {cores: 4, threads: 8,  gen: 7 , tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/97122/intel-core-i77700t-processor-8m-cache-up-to-3-80-ghz/specifications.html
+i5-8500T:  {cores: 6, threads: 6,  gen: 8 , tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/129941/intel-core-i58500t-processor-9m-cache-up-to-3-50-ghz/specifications.html
+i5-9400T:  {cores: 6, threads: 6,  gen: 9 , tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/134893/intel-core-i59400t-processor-9m-cache-up-to-3-40-ghz/specifications.html
+i5-9600:   {cores: 6, threads: 6,  gen: 9 , tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/134900/intel-core-i59600-processor-9m-cache-up-to-4-60-ghz/specifications.html
+i7-9700:   {cores: 8, threads: 8,  gen: 9 , tdp: 65, nested_virt: true}
+# 8 threads, not 16: the 9th-gen i7 dropped Hyper-Threading. The i9-9900 below
+# has it. Reading the i7 badge as "has SMT" would overstate threads by half.
+# https://www.intel.com/content/www/us/en/products/sku/191792/intel-core-i79700-processor-12m-cache-up-to-4-70-ghz/specifications.html
+i7-9700T:  {cores: 8, threads: 8,  gen: 9 , tdp: 35, nested_virt: true}
+# 8 threads, for the same reason as the i7-9700 above.
+# https://www.intel.com/content/www/us/en/products/sku/191048/intel-core-i79700t-processor-12m-cache-up-to-4-30-ghz/specifications.html
+i9-9900:   {cores: 8, threads: 16, gen: 9 , tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/191789/intel-core-i99900-processor-16m-cache-up-to-5-00-ghz/specifications.html
+i3-10100T: {cores: 4, threads: 8,  gen: 10, tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/199284/intel-core-i310100t-processor-6m-cache-up-to-3-80-ghz/specifications.html
+i5-10400T: {cores: 6, threads: 12, gen: 10, tdp: 35, nested_virt: true}
+# The most common missing CPU in the first eBay poll: 70 listings, 52 of them
+# failing on nothing else.
+# https://www.intel.com/content/www/us/en/products/sku/199276/intel-core-i510400t-processor-12m-cache-up-to-3-60-ghz/specifications.html
+i5-10500:  {cores: 6, threads: 12, gen: 10, tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/199277/intel-core-i510500-processor-12m-cache-up-to-4-50-ghz/specifications.html
+i5-10600T: {cores: 6, threads: 12, gen: 10, tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/199279/intel-core-i510600t-processor-12m-cache-up-to-4-00-ghz/specifications.html
+i7-10700:  {cores: 8, threads: 16, gen: 10, tdp: 65, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/199316/intel-core-i710700-processor-16m-cache-up-to-4-80-ghz/specifications.html
+i9-10900T: {cores: 10, threads: 20, gen: 10, tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/199324/intel-core-i910900t-processor-20m-cache-up-to-4-60-ghz/specifications.html
+i5-11400T: {cores: 6, threads: 12, gen: 11, tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/212273/intel-core-i511400t-processor-12m-cache-up-to-3-70-ghz/specifications.html
+i7-11700T: {cores: 8, threads: 16, gen: 11, tdp: 35, nested_virt: true}
+# https://www.intel.com/content/www/us/en/products/sku/212251/intel-core-i711700t-processor-16m-cache-up-to-4-60-ghz/specifications.html
+i5-12400:  {cores: 6, threads: 12, gen: 12, tdp: 65, nested_virt: true}
+# ARK total: 6 cores / 12 threads (6 P + 0 E). No E-cores.
+# https://www.intel.com/content/www/us/en/products/sku/134586/intel-core-i512400-processor-18m-cache-up-to-4-40-ghz/specifications.html
+i5-12400T: {cores: 6, threads: 12, gen: 12, tdp: 35, nested_virt: true}
+# ARK total: 6 cores / 12 threads (6 P + 0 E). No E-cores.
+# https://www.intel.com/content/www/us/en/products/sku/223094/intel-core-i512400t-processor-18m-cache-up-to-4-20-ghz/specifications.html
+i5-12500T: {cores: 6, threads: 12, gen: 12, tdp: 35, nested_virt: true}
+# ARK total: 6 cores / 12 threads (6 P + 0 E). No E-cores.
+# https://www.intel.com/content/www/us/en/products/sku/96140/intel-core-i512500t-processor-18m-cache-up-to-4-40-ghz/specifications.html
+i5-12600T: {cores: 6, threads: 12, gen: 12, tdp: 35, nested_virt: true}
+# ARK total: 6 cores / 12 threads (6 P + 0 E). No E-cores.
+# https://www.intel.com/content/www/us/en/products/sku/96150/intel-core-i512600t-processor-18m-cache-up-to-4-60-ghz/specifications.html
+i7-12700T: {cores: 8, threads: 16, gen: 12, tdp: 35, nested_virt: true}
+# ARK total: 12 cores / 20 threads (8 P + 4 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/134596/intel-core-i712700t-processor-25m-cache-up-to-4-70-ghz/specifications.html
+i3-13100T: {cores: 4, threads: 8,  gen: 13, tdp: 35, nested_virt: true}
+# ARK total: 4 cores / 8 threads (4 P + 0 E). No E-cores.
+# https://www.intel.com/content/www/us/en/products/sku/230579/intel-core-i313100t-processor-12m-cache-up-to-4-20-ghz/specifications.html
+i5-13500:  {cores: 6, threads: 12, gen: 13, tdp: 65, nested_virt: true}
+# ARK total: 14 cores / 20 threads (6 P + 8 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230580/intel-core-i513500-processor-24m-cache-up-to-4-80-ghz/specifications.html
+i7-13620H: {cores: 6, threads: 12, gen: 13, tdp: 45, nested_virt: true}
+# ARK total: 10 cores / 16 threads (6 P + 4 E). P-core figures recorded.
+# A 45 W laptop chip, in an Asus V500 listed among the desktops.
+# https://www.intel.com/content/www/us/en/products/sku/232130/intel-core-i713620h-processor-24m-cache-up-to-4-90-ghz/specifications.html
+i7-13700:  {cores: 8, threads: 16, gen: 13, tdp: 65, nested_virt: true}
+# ARK total: 16 cores / 24 threads (8 P + 8 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230490/intel-core-i713700-processor-30m-cache-up-to-5-20-ghz/specifications.html
+i7-13700K: {cores: 8, threads: 16, gen: 13, tdp: 125, nested_virt: true}
+# ARK total: 16 cores / 24 threads (8 P + 8 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230500/intel-core-i713700k-processor-30m-cache-up-to-5-40-ghz/specifications.html
+i7-13700T: {cores: 8, threads: 16, gen: 13, tdp: 35, nested_virt: true}
+# ARK total: 16 cores / 24 threads (8 P + 8 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230492/intel-core-i713700t-processor-30m-cache-up-to-4-90-ghz/specifications.html
+i9-13900:  {cores: 8, threads: 16, gen: 13, tdp: 65, nested_virt: true}
+# ARK total: 24 cores / 32 threads (8 P + 16 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230499/intel-core-i913900-processor-36m-cache-up-to-5-60-ghz/specifications.html
+i9-13900K: {cores: 8, threads: 16, gen: 13, tdp: 125, nested_virt: true}
+# ARK total: 24 cores / 32 threads (8 P + 16 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/230496/intel-core-i913900k-processor-36m-cache-up-to-5-80-ghz/specifications.html
+i3-14100T: {cores: 4, threads: 8,  gen: 14, tdp: 35, nested_virt: true}
+# ARK total: 4 cores / 8 threads (4 P + 0 E). No E-cores.
+# https://www.intel.com/content/www/us/en/products/sku/236775/intel-core-i3-processor-14100t-12m-cache-up-to-4-40-ghz/specifications.html
+i5-14400:  {cores: 6, threads: 12, gen: 14, tdp: 65, nested_virt: true}
+# ARK total: 10 cores / 16 threads (6 P + 4 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/236788/intel-core-i5-processor-14400-20m-cache-up-to-4-70-ghz/specifications.html
+i7-14700:  {cores: 8, threads: 16, gen: 14, tdp: 65, nested_virt: true}
+# ARK total: 20 cores / 28 threads (8 P + 12 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/236781/intel-core-i7-processor-14700-33m-cache-up-to-5-40-ghz/specifications.html
+i7-14700T: {cores: 8, threads: 16, gen: 14, tdp: 35, nested_virt: true}
+# ARK total: 20 cores / 28 threads (8 P + 12 E). P-core figures recorded.
+# https://www.intel.com/content/www/us/en/products/sku/236794/intel-core-i7-processor-14700t-33m-cache-up-to-5-20-ghz/specifications.html

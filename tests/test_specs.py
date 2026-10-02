@@ -124,8 +124,8 @@ def test_i5_4570t_is_dual_core(cpus):
 
 
 def test_unknown_cpu_is_named_not_guessed(cpus):
-    name, spec = specs.parse_cpu("Some Desktop i9-13900K 32GB", cpus)
-    assert name == "i9-13900K"
+    name, spec = specs.parse_cpu("Some Desktop i7-4790K 32GB", cpus)
+    assert name == "i7-4790K"
     assert spec is None
 
 
