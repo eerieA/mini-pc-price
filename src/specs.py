@@ -38,10 +38,33 @@ RAM_LABELLED_RE = re.compile(
 STORAGE_WORD_RE = re.compile(r"\s*(?:GB\s*)?(?:SSD|NVME|HDD|M\.?2|PCIE|SATA)\b",
                              re.I)
 
-# "256 SSD", "256GB SSD", "512GB NVMe", "2 TB HDD". The unit is optional for GB,
-# the medium is not. TB needs its unit: a bare "2 SSD" is not a disk size.
+# "256 SSD", "256GB SSD", "512GB NVMe", "2 TB HDD", "512GB M.2", "256GB m2 SSD".
+# The unit is optional for GB, the medium is not. TB needs its unit: a bare
+# "2 SSD" is not a disk size. "Go"/"To" are the French units eBay.ca serves.
+#
+# M.2 is a connector, not an interface: chassis.yaml records M.2 sockets that
+# are SATA-only and ones that take either. So "M.2" alone reads as 'ssd',
+# interface unstated, unless NVMe is also named -- the same reasoning as
+# parse_storage's refusal to upgrade from the chassis.
 STORAGE_RE = re.compile(
-    r"\b(?:(\d{3,4})\s*(?:GB\s*)?|(\d)\s*TB\s*)(SSD|NVME|HDD)\b", re.I)
+    r"\b(?:(\d{3,4})\s*(?:G[BO]\s*)?|(\d)\s*T[BO]\s*)"
+    r"(?:(M\.?2)\b\s*(SSD|NVME)?|(SSD|NVME|HDD))\b", re.I)
+
+# A drive capacity with no medium at all: "16GB 512GB Win 11 Pro". Read only
+# when the title names no drive otherwise, and only at MIN_BARE_DISK_GB or more.
+# Not beside a slash: "256/512GB" is a choice of configurations, not this
+# machine's drive.
+BARE_STORAGE_RE = re.compile(
+    r"(?<![/\d.])\b(?:(\d{3,4})\s*G[BO]|(\d)\s*T[BO])\b"
+    r"(?!\s*(?:/|RAM|DDR|MEMORY))", re.I)
+
+# Every RAM figure in these titles is 64 GB or less and no drive in them is
+# under 120 GB, so an unlabelled capacity says which it is by its size. Both
+# _ram_in and parse_bare_storage read this one threshold.
+MIN_BARE_DISK_GB = 120
+
+# The parse note for a drive whose medium the title does not name.
+STORAGE_TYPE_UNSTATED = "drive type not stated in title"
 
 # The parse note that marks an interface read from the description. report.py
 # prints it beside the listing, since the ranking then rests on vendor prose.
@@ -134,6 +157,8 @@ def _ram_in(text):
         trailing = text[match.end():match.end() + 12]
         if STORAGE_WORD_RE.match(trailing):
             continue  # "256GB NVMe SSD" -- a disk, whatever the title's order
+        if int(match.group(1)) >= MIN_BARE_DISK_GB:
+            continue  # "512GB" with no label -- a disk by its size
         return int(match.group(1))
     return None
 
@@ -150,10 +175,22 @@ def parse_storage(text):
     match = STORAGE_RE.search(text)
     if not match:
         return None, None
-    gigabytes, terabytes, medium = match.groups()
+    gigabytes, terabytes, _, after_m2, medium = match.groups()
+    return _gigabytes(gigabytes, terabytes), (after_m2 or medium or "ssd").lower()
+
+
+def parse_bare_storage(text):
+    """A drive capacity stated with no medium ("16GB 512GB Win 11"), or None."""
+    for match in BARE_STORAGE_RE.finditer(text):
+        size = _gigabytes(*match.groups())
+        if size >= MIN_BARE_DISK_GB:
+            return size
+    return None
+
+
+def _gigabytes(gigabytes, terabytes):
     # Decimal, as drives are sold: a "2 TB" disk is 2000 GB, not 2048.
-    size = int(gigabytes) if gigabytes else int(terabytes) * 1000
-    return size, medium.lower()
+    return int(gigabytes) if gigabytes else int(terabytes) * 1000
 
 
 def listing_storage(title, body_text=""):
@@ -168,6 +205,10 @@ def listing_storage(title, body_text=""):
     what tells the two apart.
     """
     size, medium = parse_storage(title)
+    if size is None and parse_bare_storage(title):
+        # Type None rather than a guess: a bare "500GB" on these machines is
+        # often a hard disk. It pays the storage_nvme penalty like 'ssd' does.
+        return parse_bare_storage(title), None, [STORAGE_TYPE_UNSTATED]
     if size is None:
         size, medium = parse_storage(body_text)
         if size is None:

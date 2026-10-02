@@ -336,6 +336,72 @@ def test_parse_storage_reads_terabytes(title, expected):
     assert specs.parse_storage(title) == expected
 
 
+# ── Storage as eBay sellers write it ─────────────────────────────────────────
+# Real titles from the first eBay poll, 2026-10-02.
+
+@pytest.mark.parametrize("title, expected", [
+    # M.2 is a connector, not an interface: 'ssd', never upgraded to 'nvme'.
+    ("Dell OptiPlex 3080 Micro i5-10500T 8GB RAM 128GB M.2 SSD Win10 Pro WiFi",
+     (128, "ssd")),
+    ("Dell Optiplex 3080 Micro PC i5-10500T 16GB DDR4 256GB m2 SSD WIN11",
+     (256, "ssd")),
+    ("HP EliteDesk 800 G5 Mini Desktop i5-9500T 2.2GHz 16GB 512GB M.2 Win 11 Pro",
+     (512, "ssd")),
+    ("Lenovo ThinkCentre M70s Core i5-10400 2.90 GHz 8 GB DDR4 500 GB M.2",
+     (500, "ssd")),
+    ("HP Desktop Computer PC i5 8th, 16GB RAM, 256 M.2 NVMe SSD, Windows 11",
+     (256, "nvme")),
+    # eBay.ca's French units.
+    ("HP EliteDesk 800 G6 Mini - Intel Core i5-10500T, 16GB RAM, 512Go NVMe",
+     (512, "nvme")),
+    ("Thinkcentre M70Q G5 Tiny Bureau Pc Core I5-14400T 8Go 256Go Ssd Win 11",
+     (256, "ssd")),
+])
+def test_parse_storage_reads_ebay_titles(title, expected):
+    assert specs.parse_storage(title) == expected
+
+
+@pytest.mark.parametrize("title, ram_gb, storage_gb", [
+    ("Lenovo ThinkCentre M70q Tiny Desktop Core i5-10400T 2.0GHz 16GB 512GB Win 11 Pro",
+     16, 512),
+    ("Lenovo ThinkCentre M80q Tiny Core i5-10500T 2.3GHz 32GB 1TB Windows 10 Pro",
+     32, 1000),
+    ("Lenovo ThinkCentre M70q Gen 1 Core i5-10400T 2.00GHz 16GB DDR4 256GB",
+     16, 256),
+    ("LENOVO ThinkCentre M80Q, Tiny Intel HD,i7-10700T, 16GB, 512GB", 16, 512),
+    ("Lenovo ThinkStation P340 Tiny | i7-10700T | 16GB | 512 GB | Win 11 Pro",
+     16, 512),
+])
+def test_bare_capacity_is_storage_of_unstated_type(title, ram_gb, storage_gb,
+                                                  chassis, cpus, aliases):
+    result = specs.parse(title, "", chassis, cpus, aliases)
+    assert (result["ram_gb"], result["storage_gb"]) == (ram_gb, storage_gb)
+    assert result["storage_type"] is None
+    assert specs.STORAGE_TYPE_UNSTATED in result["parse_notes"]
+    assert result["parse_ok"] is True
+
+
+@pytest.mark.parametrize("title", [
+    # A choice of configurations, not this machine's drive.
+    "Dell OptiPlex 3080 Micro i5-10500T 8/16GB 256/512GB WIN11 Pro AC",
+    # No drive at all: a separate decision (pricing one), not a parse.
+    "HP EliteDesk 800 G5 DM Core i5-9500T 2.20 GHz 8 GB DDR4 No HDD",
+    # GPU memory and RAM are under the threshold.
+    "HP ProDesk 800 G3 SFF i3 SFF Mini Desktop, 16GB RAM, GT730 4GB, Win10",
+])
+def test_no_bare_capacity_is_invented(title):
+    assert specs.parse_bare_storage(title) is None
+
+
+def test_a_lone_bare_capacity_is_the_disk_not_the_ram(chassis, cpus, aliases):
+    """Without the threshold, the only capacity in the title would be read as
+    RAM *and* as the disk -- a 512 GB-RAM machine that needs no upgrade."""
+    result = specs.parse("Lenovo ThinkCentre M70q Tiny i5-10400T 512GB Win 11",
+                         "", chassis, cpus, aliases)
+    assert result["ram_gb"] is None
+    assert result["storage_gb"] == 512
+
+
 def test_ram_is_not_the_terabyte_disk(chassis, cpus, aliases):
     result = specs.parse("HP EliteDesk 800 G3 SFF (Intel i5-7500 / 8 GB RAM / "
                          "2 TB HDD)", "", chassis, cpus, aliases)

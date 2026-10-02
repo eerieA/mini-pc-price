@@ -64,7 +64,7 @@ def format_listing(listing, price, terms, misses, rules):
     if (listing["ram_gb"] or 0) >= rules["prefer_shipped_ram_gb"]:
         shipped_marker = " *ships 32GB"
     lines.append(f"           {listing['cpu']} / {listing['cpu_cores']}c / {ram} / "
-                 f"{listing['storage_gb']}GB {listing['storage_type'].upper()}"
+                 f"{listing['storage_gb']}GB {(listing['storage_type'] or 'type?').upper()}"
                  f"{shipped_marker}")
 
     if listing.get("fulfillment"):
@@ -369,7 +369,7 @@ def warning_lines(ranked, unparsed, config, stale=None):
         detail = (f" {confirmed} confirmed NVMe by hand (see overrides below)."
                   if confirmed else "")
         warnings.append(
-            f"storage interface unstated - listings say only 'SSD'. "
+            f"storage interface unstated - listings say only 'SSD', 'M.2' or a size. "
             f"{unstated} of {len(ranked)} pay the nvme penalty.{detail}"
         )
         if config["parts"]["storage"]["nvme_512gb"] is not None:
@@ -414,7 +414,8 @@ def warning_lines(ranked, unparsed, config, stale=None):
 
 
 # parse_notes that record where a value came from, not why parsing failed.
-_INFORMATIONAL_NOTE = re.compile(r"read from description|variants; only")
+_INFORMATIONAL_NOTE = re.compile(
+    rf"read from description|variants; only|{specs.STORAGE_TYPE_UNSTATED}")
 
 
 def unparsed_tally(listings):
